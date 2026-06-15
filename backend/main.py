@@ -14,7 +14,7 @@ app.add_middleware(
 
 
 app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])          #include jobs router
-app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])  #include resumes router
+app.include_router(resumes.router, tags=["Resumes"])  #include resumes router
 
 
 @app.get("/health")
