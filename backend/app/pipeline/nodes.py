@@ -1,5 +1,6 @@
 import json
 from google import genai
+from google.genai import types
 from app.config import GEMINI_API_KEY
 from app.database import supabase
 from app.pipeline.state import ResumeState
@@ -47,10 +48,14 @@ def score_sections(state: ResumeState) -> list[dict]:
     )
 
     response = client.models.generate_content(
-    model="gemini-2.5-flash",
-    contents=prompt
+    model="gemini-2.5-flash-lite",
+    contents=prompt,
+    config=types.GenerateContentConfig(
+        response_mime_type="application/json"
     )
+)
     raw = response.text.strip()
+    print("RAW MODEL RESPONSE:", raw)         #debugging log to see raw response from model
 
     try:
         sections = json.loads(raw)          #parse json
