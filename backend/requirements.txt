@@ -5,4 +5,4 @@ supabase
 pydantic
 python-dotenv
 pdfplumber
-google-generativeai
+google-genai
