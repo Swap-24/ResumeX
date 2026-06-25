@@ -1,16 +1,16 @@
-
-#fixed weights for each section of the resume
 SECTION_WEIGHTS = {
-    "work_experience": 0.30,
-    "projects": 0.25,
-    "skills": 0.20,
-    "education": 0.10,
+    "work_experience": 0.20,
+    "projects": 0.20,
+    "skills": 0.15,
+    "education": 0.08,
     "certifications": 0.05,
     "resume_quality": 0.05,
-    "overall_fit": 0.05,
+    "trajectory": 0.10,
+    "impact_quality": 0.09,
+    "inferred_intent": 0.05,
+    "overall_fit": 0.03,
 }
 
-#per section score calculated, and then overall score is a weighted average of section scores
 def compute_overall_score(sections: list[dict]) -> int:
     total = 0.0
     total_weight = 0.0

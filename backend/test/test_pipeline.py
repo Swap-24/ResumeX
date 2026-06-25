@@ -5,14 +5,12 @@ from app.pipeline.graph import pipeline
 from app.services.pdf_parser import extract_text_from_pdf
 
 JOB_ID = "886f6f9d-3bf0-42fc-af83-508e03c2522b"
+RESUME_ID = "edb738f4-d6eb-49bc-b271-9da5fe0c03fb"
 
-with open("test/test_resume.pdf", "rb") as f:
+with open("test/Swapnil_Lahiri_Resume.pdf", "rb") as f:
     file_bytes = f.read()
 
-from app.services.pdf_parser import extract_text_from_pdf
 raw_text = extract_text_from_pdf(file_bytes)
-
-RESUME_ID = "edb738f4-d6eb-49bc-b271-9da5fe0c03fb"
 
 result = pipeline.invoke({
     "resume_id": RESUME_ID,
@@ -20,6 +18,8 @@ result = pipeline.invoke({
     "raw_text": raw_text,
     "job_description": "",
     "job_requirements": "",
+    "evaluator_sections": None,
+    "profiler_sections": None,
     "scored_sections": None,
     "overall_score": None,
     "overall_summary": None,

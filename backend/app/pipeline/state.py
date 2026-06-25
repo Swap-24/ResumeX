@@ -6,7 +6,9 @@ class ResumeState(TypedDict):
     raw_text: str
     job_description: str
     job_requirements: str
-    scored_sections: Optional[list[dict]]
+    evaluator_sections: Optional[list[dict]]   # GPT-style concrete scoring (still Gemini call)
+    profiler_sections: Optional[list[dict]]    # hidden signal scoring
+    scored_sections: Optional[list[dict]]      # combined final list
     overall_score: Optional[int]
     overall_summary: Optional[str]
     error: Optional[str]

@@ -6,7 +6,7 @@ def extract_text_from_pdf(file: bytes) -> str:              #text extraction
     text = ""
     with pdfplumber.open(io.BytesIO(file)) as pdf:
         for page in pdf.pages:
-            page_text = page.extract_text()
+            page_text = page.extract_text(layout=True)
             if page_text:
                 text += page_text + "\n"
     

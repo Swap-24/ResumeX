@@ -14,6 +14,8 @@ def run_pipeline(resume_id: str, job_id: str, raw_text: str):
         "raw_text": raw_text,
         "job_description": "",
         "job_requirements": "",
+        "evaluator_sections": None,
+        "profiler_sections": None,
         "scored_sections": None,
         "overall_score": None,
         "overall_summary": None,
