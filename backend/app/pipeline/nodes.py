@@ -1,4 +1,5 @@
 import json
+from typing import cast, Any
 from google import genai
 from app.config import GEMINI_API_KEY
 from app.database import supabase
@@ -31,10 +32,10 @@ def fetch_job(state: ResumeState) -> dict:
         if not response.data:
             return {"error": "Job not found"}
 
-        job = response.data[0]
+        job = cast(dict[str, Any], response.data[0])
         return {
-            "job_description": job["description"],
-            "job_requirements": job["requirements"]
+            "job_description": job.get("description", ""),
+            "job_requirements": job.get("requirements", "")
         }
     except Exception as e:
         return {"error": str(e)}
@@ -49,7 +50,8 @@ def _call_gemini(prompt: str, max_retries: int = 3) -> list[dict]:
                 model="gemini-2.5-flash",
                 contents=prompt
             )
-            raw = response.text.strip()
+            text = response.text
+            raw = text.strip() if text else ""
 
             if raw.startswith("```"):
                 raw = raw.strip("`")
@@ -73,7 +75,9 @@ def _call_gemini(prompt: str, max_retries: int = 3) -> list[dict]:
             else:
                 raise  # non-transient error, fail immediately
 
-    raise last_error
+    if last_error is not None:
+        raise last_error
+    raise Exception("Unknown error in _call_gemini")
 
 
 def run_evaluator(state: ResumeState) -> dict:
@@ -123,18 +127,21 @@ def combine_sections(state: ResumeState) -> dict:
         return {}
 
     try:
-        combined = list(state["evaluator_sections"]) + list(state["profiler_sections"])
+        eval_secs = state.get("evaluator_sections") or []
+        prof_secs = state.get("profiler_sections") or []
+        combined = list(eval_secs) + list(prof_secs)
 
         for section in combined:
-            key = section["section_key"]
-            section["display_order"] = SECTION_ORDER.index(key) if key in SECTION_ORDER else 99
+            section_dict = cast(dict[str, Any], section)
+            key = section_dict.get("section_key")
+            section_dict["display_order"] = SECTION_ORDER.index(key) if isinstance(key, str) and key in SECTION_ORDER else 99
             # defensively fill any keys Gemini might have dropped
-            section.setdefault("positives", [])
-            section.setdefault("negatives", [])
-            section.setdefault("missing", [])
-            section.setdefault("summary", "")
+            section_dict.setdefault("positives", [])
+            section_dict.setdefault("negatives", [])
+            section_dict.setdefault("missing", [])
+            section_dict.setdefault("summary", "")
 
-        combined.sort(key=lambda s: s["display_order"])
+        combined.sort(key=lambda s: cast(dict[str, Any], s).get("display_order", 99))
 
         return {"scored_sections": combined}
 
@@ -150,25 +157,28 @@ def save_analysis(state: ResumeState) -> dict:
         return {}
 
     try:
-        sections = state["scored_sections"]
+        sections = state.get("scored_sections") or []
         overall_score = compute_overall_score(sections)
 
-        overall_fit = next((s for s in sections if s["section_key"] == "overall_fit"), None)
-        overall_summary = overall_fit["summary"] if overall_fit else ""
+        overall_fit = next((s for s in sections if cast(dict[str, Any], s).get("section_key") == "overall_fit"), None)
+        overall_summary = cast(dict[str, Any], overall_fit).get("summary", "") if overall_fit else ""
 
         section_rows = []
         for section in sections:
+            sec_dict = cast(dict[str, Any], section)
+            score = sec_dict.get("score")
+            score_int = int(score) if score is not None else 0
             section_rows.append({
                 "resume_id": state["resume_id"],
-                "section_key": section["section_key"],
-                "section_label": section["section_label"],
-                "score": section["score"],
-                "label": compute_label(section["score"]),
-                "summary": section["summary"],
-                "positives": section["positives"],
-                "negatives": section["negatives"],
-                "missing": section["missing"],
-                "display_order": section["display_order"]
+                "section_key": sec_dict.get("section_key"),
+                "section_label": sec_dict.get("section_label"),
+                "score": score_int,
+                "label": compute_label(score_int),
+                "summary": sec_dict.get("summary"),
+                "positives": sec_dict.get("positives"),
+                "negatives": sec_dict.get("negatives"),
+                "missing": sec_dict.get("missing"),
+                "display_order": sec_dict.get("display_order")
             })
 
         supabase.table("resume_sections").insert(section_rows).execute()

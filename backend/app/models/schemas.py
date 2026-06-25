@@ -8,14 +8,24 @@ class JobCreate(BaseModel):
     title: str
     description: str
     requirements: str
+    location: Optional[str] = None
+    application_deadline: Optional[datetime] = None
+    employment_type: Optional[str] = None
+    department: Optional[str] = None
 
 class JobResponse(BaseModel):
     id: str
     title: str
     description: str
     requirements: str
+    location: Optional[str]
+    application_deadline: Optional[datetime]
+    employment_type: Optional[str]
+    department: Optional[str]
     is_active: bool
     created_at: datetime
+    applicant_count: Optional[int] = 0
+    average_score: Optional[float] = 0.0
 
 #Resume Schemas
 
@@ -44,6 +54,8 @@ class ResumeResponse(BaseModel):
     overall_score: Optional[int]
     overall_summary: Optional[str]
     status: str
+    application_status: Optional[str]
     submitted_at: datetime
     analyzed_at: Optional[datetime]
+    decided_at: Optional[datetime]
     sections: Optional[list[ResumeSection]] = []

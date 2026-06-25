@@ -3,9 +3,24 @@ from app.database import supabase
 from app.models.schemas import ResumeResponse
 from app.services.pdf_parser import extract_text_from_pdf
 from app.pipeline.graph import pipeline
+from datetime import datetime, timezone
+from pydantic import BaseModel
+from typing import Optional, cast, Any
+
+
 
 router = APIRouter()
 
+class BulkShortlistRequest(BaseModel):
+    resume_ids: list[str]
+    message: Optional[str] = None
+
+class BulkRejectRequest(BaseModel):
+    resume_ids: list[str]
+    message: Optional[str] = None
+
+class IndividualMessageRequest(BaseModel):
+    message: str
 
 def run_pipeline(resume_id: str, job_id: str, raw_text: str):
     pipeline.invoke({
@@ -31,6 +46,22 @@ async def upload_resume(
     candidate_name: str = Form(...),
     candidate_email: str = Form(...)
 ):
+    
+    job_response = supabase.table("jobs").select("application_deadline, is_active").eq("id", job_id).execute()
+    
+    if not job_response.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = cast(dict[str, Any], job_response.data[0])
+    
+    if not job.get("is_active"):
+        raise HTTPException(status_code=400, detail="This job posting is closed")
+    
+    deadline = job.get("application_deadline")
+    if isinstance(deadline, str):
+        deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) > deadline_dt:
+            raise HTTPException(status_code=400, detail="The application deadline for this job has passed")
     # validate file type
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
@@ -55,18 +86,19 @@ async def upload_resume(
         "candidate_email": candidate_email,
         "file_url": file_url,
         "raw_text": raw_text,
-        "status": "analyzing"
+        "status": "analyzing",
+        "application_status": "applied"
     }).execute()
 
     if not response.data:
         raise HTTPException(status_code=500, detail="Failed to create resume record")
 
-    resume = response.data[0]
+    resume = cast(dict[str, Any], response.data[0])
 
     # trigger pipeline in background
-    background_tasks.add_task(run_pipeline, resume["id"], job_id, raw_text)
+    background_tasks.add_task(run_pipeline, cast(str, resume.get("id")), job_id, raw_text)
 
-    return {"resume_id": resume["id"], "status": "analyzing"}
+    return {"resume_id": resume.get("id"), "status": "analyzing"}
 
 
 @router.get("/resumes/{resume_id}")
@@ -76,7 +108,7 @@ def get_resume(resume_id: str):
     if not resume_response.data:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    resume = resume_response.data[0]
+    resume = cast(dict[str, Any], resume_response.data[0])
 
     sections_response = supabase.table("resume_sections").select("*").eq("resume_id", resume_id).order("display_order").execute()
 
@@ -100,3 +132,51 @@ def get_job_resumes(job_id: str):
     response = supabase.table("resumes").select("*").eq("job_id", job_id).order("overall_score", desc=True).execute()
     return response.data
 
+@router.post("/resumes/bulk-shortlist")
+def bulk_shortlist(payload: BulkShortlistRequest):
+    supabase.table("resumes").update({
+        "application_status": "shortlisted",
+        "decided_at": datetime.now(timezone.utc).isoformat()
+    }).in_("id", payload.resume_ids).execute()
+
+    if payload.message:
+        message_rows = [{"resume_id": rid, "message_body": payload.message} for rid in payload.resume_ids]
+        supabase.table("messages").insert(message_rows).execute()
+
+    return {"updated": len(payload.resume_ids)}
+
+
+@router.post("/resumes/bulk-reject")
+def bulk_reject(payload: BulkRejectRequest):
+    supabase.table("resumes").update({
+        "application_status": "rejected",
+        "decided_at": datetime.now(timezone.utc).isoformat()
+    }).in_("id", payload.resume_ids).execute()
+
+    if payload.message:
+        message_rows = [{"resume_id": rid, "message_body": payload.message} for rid in payload.resume_ids]
+        supabase.table("messages").insert(message_rows).execute()
+
+    return {"updated": len(payload.resume_ids)}
+
+@router.post("/resumes/{resume_id}/message")
+def send_message(resume_id: str, payload: IndividualMessageRequest):
+    supabase.table("messages").insert({
+        "resume_id": resume_id,
+        "message_body": payload.message
+    }).execute()
+    return {"sent": True}
+
+@router.get("/candidates/{email}/applications")
+def get_candidate_applications(email: str):
+    response = supabase.table("resumes").select(
+        "id, job_id, overall_score, application_status, submitted_at, decided_at, jobs(title, location)"
+    ).eq("candidate_email", email).order("submitted_at", desc=True).execute()
+    
+    if response.data:
+        for app in response.data:
+            app_dict = cast(dict[str, Any], app)
+            msg_response = supabase.table("messages").select("*").eq("resume_id", app_dict.get("id")).order("sent_at", desc=True).execute()
+            app_dict["messages"] = msg_response.data
+    
+    return response.data
