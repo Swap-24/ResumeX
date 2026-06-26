@@ -5,194 +5,244 @@ import EmployerDashboard from './components/EmployerDashboard';
 import JobDetails from './components/JobDetails';
 import ResumeAnalysis from './components/ResumeAnalysis';
 import CandidatePortal from './components/CandidatePortal';
-import LandingPage from './components/LandingPage';
+import AuthPage from './components/Auth/AuthPage';
+import { supabase } from './lib/supabaseClient';
 
 const API_BASE_URL = 'http://localhost:8000';
 
+// Helper — returns axios headers with JWT if session exists
+const authHeaders = (session) =>
+  session?.access_token
+    ? { Authorization: `Bearer ${session.access_token}` }
+    : {};
+
 const App = () => {
-  const [userMode, setUserMode] = useState('landing'); // 'landing' | 'employer' | 'candidate'
+  // Auth state
+  const [session, setSession] = useState(undefined); // undefined = loading, null = guest/logged-out, object = authenticated
+  const [userMeta, setUserMeta] = useState(null);    // { role, display_name, email }
+
+  // App navigation state
   const [jobs, setJobs] = useState([]);
-  
-  // Employer view navigation state
   const [selectedJob, setSelectedJob] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
-
-  // Candidate portal lookup state
   const [candidateApps, setCandidateApps] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load/refresh jobs when the page mounts or user mode changes
+  // ----- Auth bootstrap -----
   useEffect(() => {
-    fetchJobs();
-  }, [userMode]);
+    // Restore existing session on mount
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      if (existingSession) {
+        const meta = existingSession.user?.user_metadata || {};
+        setSession(existingSession);
+        setUserMeta({
+          role: meta.role || 'candidate',
+          display_name: meta.display_name || existingSession.user?.email || '',
+          email: existingSession.user?.email || '',
+        });
+      } else {
+        setSession(null); // not logged in
+      }
+    });
 
-  // Fetch all jobs
+    // Listen for auth changes (login/logout/token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (newSession) {
+        const meta = newSession.user?.user_metadata || {};
+        setSession(newSession);
+        setUserMeta({
+          role: meta.role || 'candidate',
+          display_name: meta.display_name || newSession.user?.email || '',
+          email: newSession.user?.email || '',
+        });
+      } else {
+        setSession(null);
+        setUserMeta(null);
+        setJobs([]);
+        setSelectedJob(null);
+        setCandidates([]);
+        setSelectedCandidate(null);
+        setCandidateApps([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ----- Jobs -----
   const fetchJobs = async (shouldRefreshSelected = true) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/jobs/`);
+      const currentSession = (await supabase.auth.getSession()).data.session;
+      const currentMeta = currentSession?.user?.user_metadata || {};
+      const role = currentMeta.role || userMeta?.role;
+
+      let url = `${API_BASE_URL}/jobs/`;
+      const headers = authHeaders(currentSession);
+
+      // Companies always fetch only their own jobs
+      if (role === 'company') {
+        url += '?mine=true';
+      }
+
+      const response = await axios.get(url, { headers });
       setJobs(response.data || []);
-      
-      // Update selected job in state if it's active
+
       if (shouldRefreshSelected && selectedJob) {
-        const updatedJob = response.data.find(j => j.id === selectedJob.id);
+        const updatedJob = (response.data || []).find(j => j.id === selectedJob.id);
         if (updatedJob) setSelectedJob(updatedJob);
       }
     } catch (error) {
-      console.error("Error fetching jobs:", error);
+      console.error('Error fetching jobs:', error);
     }
   };
 
-  // Auto-poll every 4s while any candidates are still analyzing
+  useEffect(() => {
+    // Only fetch jobs once auth is resolved (session is not undefined)
+    if (session !== undefined && userMeta) {
+      fetchJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, userMeta?.role]);
+
+  // ----- Candidate auto-polling -----
   useEffect(() => {
     const hasAnalyzing = candidates.some(c => c.status === 'analyzing');
     if (!selectedJob || !hasAnalyzing) return;
-
-    const timer = setInterval(() => {
-      fetchCandidates(selectedJob.id, false);
-    }, 4000);
-
+    const timer = setInterval(() => fetchCandidates(selectedJob.id, false), 4000);
     return () => clearInterval(timer);
   }, [candidates, selectedJob]);
 
-  // Fetch candidates for a specific job
+  // ----- Candidates -----
   const fetchCandidates = async (jobId, shouldRefreshSelected = true) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/jobs/${jobId}/resumes`);
+      const response = await axios.get(`${API_BASE_URL}/jobs/${jobId}/resumes`, {
+        headers: authHeaders(session),
+      });
       setCandidates(response.data || []);
-      
-      // Update selected candidate details if active
       if (shouldRefreshSelected && selectedCandidate) {
-        const updatedCandidate = response.data.find(c => c.id === selectedCandidate.id);
-        if (updatedCandidate) {
-          // Fetch full resume breakdown details
-          const detailRes = await axios.get(`${API_BASE_URL}/resumes/${selectedCandidate.id}`);
+        const updated = (response.data || []).find(c => c.id === selectedCandidate.id);
+        if (updated) {
+          const detailRes = await axios.get(`${API_BASE_URL}/resumes/${selectedCandidate.id}`, {
+            headers: authHeaders(session),
+          });
           setSelectedCandidate(detailRes.data);
         }
       }
     } catch (error) {
-      console.error("Error fetching candidates:", error);
+      console.error('Error fetching candidates:', error);
     }
   };
 
-  // Create a new job listing
+  // ----- Employer handlers -----
   const handleCreateJob = async (jobData) => {
     try {
-      const payload = {
-        ...jobData,
-        application_deadline: jobData.application_deadline || null
-      };
-      await axios.post(`${API_BASE_URL}/jobs/`, payload);
+      const payload = { ...jobData, application_deadline: jobData.application_deadline || null };
+      await axios.post(`${API_BASE_URL}/jobs/`, payload, { headers: authHeaders(session) });
       fetchJobs();
     } catch (error) {
-      console.error("Error creating job:", error);
-      alert("Failed to create job listing. Please check input values.");
+      console.error('Error creating job:', error);
+      alert('Failed to create job listing. Please check input values.');
     }
   };
 
-  // Delete a job listing
   const handleDeleteJob = async (jobId) => {
     try {
-      await axios.delete(`${API_BASE_URL}/jobs/${jobId}`);
+      await axios.delete(`${API_BASE_URL}/jobs/${jobId}`, { headers: authHeaders(session) });
       fetchJobs();
-      alert("Job listing deleted successfully.");
+      alert('Job listing deleted successfully.');
     } catch (error) {
-      console.error("Error deleting job:", error);
-      alert("Failed to delete job listing. Please try again.");
+      console.error('Error deleting job:', error);
+      alert('Failed to delete job listing. Please try again.');
     }
   };
 
-  // Select a job to view candidate rankings
   const handleSelectJob = (job) => {
     setSelectedJob(job);
     fetchCandidates(job.id);
   };
 
-  // Navigate back to employer dashboard
   const handleBackToDashboard = () => {
     setSelectedJob(null);
     setCandidates([]);
     fetchJobs(false);
   };
 
-  // View individual candidate's detailed analysis
   const handleSelectCandidate = async (candidate) => {
     try {
-      const detailRes = await axios.get(`${API_BASE_URL}/resumes/${candidate.id}`);
+      const detailRes = await axios.get(`${API_BASE_URL}/resumes/${candidate.id}`, {
+        headers: authHeaders(session),
+      });
       setSelectedCandidate(detailRes.data);
     } catch (error) {
-      console.error("Error fetching candidate details:", error);
+      console.error('Error fetching candidate details:', error);
     }
   };
 
-  // Navigate back to ranking table
   const handleBackToJobDetails = () => {
     setSelectedCandidate(null);
     if (selectedJob) fetchCandidates(selectedJob.id, false);
   };
 
-  // Bulk shortlists candidates and updates lists
   const handleBulkShortlist = async (resumeIds, message) => {
     try {
-      await axios.post(`${API_BASE_URL}/resumes/bulk-shortlist`, {
-        resume_ids: resumeIds,
-        message: message || null
-      });
+      await axios.post(
+        `${API_BASE_URL}/resumes/bulk-shortlist`,
+        { resume_ids: resumeIds, message: message || null },
+        { headers: authHeaders(session) }
+      );
       if (selectedJob) fetchCandidates(selectedJob.id);
       fetchJobs();
     } catch (error) {
-      console.error("Error during bulk shortlist:", error);
+      console.error('Error during bulk shortlist:', error);
     }
   };
 
-  // Bulk rejects candidates and updates lists
   const handleBulkReject = async (resumeIds, message) => {
     try {
-      await axios.post(`${API_BASE_URL}/resumes/bulk-reject`, {
-        resume_ids: resumeIds,
-        message: message || null
-      });
+      await axios.post(
+        `${API_BASE_URL}/resumes/bulk-reject`,
+        { resume_ids: resumeIds, message: message || null },
+        { headers: authHeaders(session) }
+      );
       if (selectedJob) fetchCandidates(selectedJob.id);
       fetchJobs();
     } catch (error) {
-      console.error("Error during bulk reject:", error);
+      console.error('Error during bulk reject:', error);
     }
   };
 
-  // Update status (shortlist or reject) of an individual candidate
   const handleUpdateStatus = async (candidateId, status, message) => {
     try {
-      if (status === 'shortlisted') {
-        await handleBulkShortlist([candidateId], message);
-      } else if (status === 'rejected') {
-        await handleBulkReject([candidateId], message);
-      }
-      
-      // Refresh detailed candidate view
-      const detailRes = await axios.get(`${API_BASE_URL}/resumes/${candidateId}`);
+      if (status === 'shortlisted') await handleBulkShortlist([candidateId], message);
+      else if (status === 'rejected') await handleBulkReject([candidateId], message);
+      const detailRes = await axios.get(`${API_BASE_URL}/resumes/${candidateId}`, {
+        headers: authHeaders(session),
+      });
       setSelectedCandidate(detailRes.data);
     } catch (error) {
-      console.error("Error updating status:", error);
+      console.error('Error updating status:', error);
     }
   };
 
-  // Send a custom text message to an individual candidate
   const handleSendMessage = async (candidateId, message) => {
     try {
-      await axios.post(`${API_BASE_URL}/resumes/${candidateId}/message`, {
-        message: message
+      await axios.post(
+        `${API_BASE_URL}/resumes/${candidateId}/message`,
+        { message },
+        { headers: authHeaders(session) }
+      );
+      const detailRes = await axios.get(`${API_BASE_URL}/resumes/${candidateId}`, {
+        headers: authHeaders(session),
       });
-      
-      // Refresh detailed candidate view
-      const detailRes = await axios.get(`${API_BASE_URL}/resumes/${candidateId}`);
       setSelectedCandidate(detailRes.data);
-      alert("Message sent successfully!");
+      alert('Message sent successfully!');
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error('Error sending message:', error);
     }
   };
 
-  // Apply to a job (Candidate PDF resume upload)
+  // ----- Candidate portal handlers -----
   const handleApply = async (jobId, name, email, file, callback) => {
     setIsSubmitting(true);
     try {
@@ -202,42 +252,84 @@ const App = () => {
       formData.append('file', file);
 
       await axios.post(`${API_BASE_URL}/jobs/${jobId}/resumes`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      alert("Application submitted! Your resume is being processed and ranked in the background.");
+      alert('Application submitted! Your resume is being processed and ranked in the background.');
       if (callback) callback();
+      // Refresh applications if we know the email
+      if (email) fetchApplications(email);
     } catch (error) {
-      console.error("Error submitting application:", error);
-      alert("Failed to submit application. Make sure the file is a PDF and valid.");
+      console.error('Error submitting application:', error);
+      alert('Failed to submit application. Make sure the file is a PDF and valid.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Look up candidate applications by email
   const fetchApplications = async (email) => {
     try {
       const response = await axios.get(`${API_BASE_URL}/candidates/${email}/applications`);
       setCandidateApps(response.data || []);
     } catch (error) {
-      console.error("Error fetching candidate applications:", error);
+      console.error('Error fetching candidate applications:', error);
     }
   };
 
+  // ----- Auth handlers -----
+  const handleLogin = (newSession, meta) => {
+    if (newSession) {
+      // Real authenticated session
+      setSession(newSession);
+      setUserMeta({
+        role: meta?.role || 'candidate',
+        display_name: meta?.display_name || meta?.email || '',
+        email: meta?.email || newSession.user?.email || '',
+      });
+    } else {
+      // Guest mode
+      setSession(null);
+      setUserMeta({ role: 'candidate', display_name: 'Guest', email: '' });
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setUserMeta(null);
+  };
+
+  // ----- Render -----
+
+  // Still checking session on mount
+  if (session === undefined) {
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+        <div className="h-8 w-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Not authenticated and not in guest mode
+  if (session === null && !userMeta) {
+    return <AuthPage onLogin={handleLogin} />;
+  }
+
+  const role = userMeta?.role || 'candidate';
+  const isCompany = role === 'company';
+  const isGuest = !session && userMeta?.role === 'candidate';
+
   return (
     <div className="min-h-screen bg-dark-bg text-gray-100 flex flex-col font-sans">
-      {/* Navbar header */}
-      {userMode !== 'landing' && <Navbar userMode={userMode} setUserMode={setUserMode} />}
+      <Navbar
+        role={role}
+        displayName={userMeta?.display_name || ''}
+        isGuest={isGuest}
+        onLogout={handleLogout}
+      />
 
-      {/* Main Content Areas */}
       <main className="flex-1 w-full">
-        {userMode === 'landing' ? (
-          <LandingPage onSelectMode={setUserMode} />
-        ) : userMode === 'employer' ? (
-          // Recruiter / Employer Views
+        {isCompany ? (
           selectedCandidate ? (
             <ResumeAnalysis
               candidate={selectedCandidate}
@@ -263,13 +355,15 @@ const App = () => {
             />
           )
         ) : (
-          // Candidate / Job Seeker Views
           <CandidatePortal
             jobs={jobs}
             onApply={handleApply}
             fetchApplications={fetchApplications}
             candidateApps={candidateApps}
+            setCandidateApps={setCandidateApps}
             isSubmitting={isSubmitting}
+            user={session ? { email: userMeta?.email, display_name: userMeta?.display_name } : null}
+            isGuest={isGuest}
           />
         )}
       </main>

@@ -1,12 +1,55 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.models.schemas import JobCreate, JobResponse
 from app.database import supabase
-from typing import cast, Any
+from app.auth import get_current_user, get_optional_user, AuthUser
+from typing import cast, Any, Optional
 
 router = APIRouter()
 
+
+def _enrich_jobs(raw_jobs: list[dict]) -> list[dict]:
+    """
+    Enriches a list of raw job rows with applicant_count and average_score.
+    Removes the nested 'resumes' key Supabase returns from the join.
+    """
+    jobs = []
+    for job in raw_jobs:
+        job_dict = cast(dict[str, Any], job)
+        resumes_list = job_dict.pop("resumes", None)
+
+        applicant_count = 0
+        average_score = 0.0
+
+        if isinstance(resumes_list, list) and resumes_list:
+            applicant_count = len(resumes_list)
+            valid_scores: list[int] = [
+                int(r["overall_score"])
+                for r in resumes_list
+                if isinstance(r, dict) and r.get("overall_score") is not None
+            ]
+            if valid_scores:
+                average_score = sum(valid_scores) / len(valid_scores)
+
+        job_dict["applicant_count"] = applicant_count
+        job_dict["average_score"] = round(average_score, 1)
+
+        # Pull company_name from nested profiles join (if present)
+        profile = job_dict.pop("profiles", None)
+        if isinstance(profile, dict):
+            job_dict["company_name"] = profile.get("display_name")
+        else:
+            job_dict["company_name"] = None
+
+        jobs.append(job_dict)
+    return jobs
+
+
 @router.post("/", response_model=JobResponse)
-def create_job(job: JobCreate):
+def create_job(job: JobCreate, user: AuthUser = Depends(get_current_user)):
+    """Create a job listing. Requires company role auth."""
+    if user.role != "company":
+        raise HTTPException(status_code=403, detail="Only company accounts can create job listings")
+
     response = supabase.table("jobs").insert({
         "title": job.title,
         "description": job.description,
@@ -15,7 +58,8 @@ def create_job(job: JobCreate):
         "application_deadline": job.application_deadline.isoformat() if job.application_deadline else None,
         "employment_type": job.employment_type,
         "department": job.department,
-        "is_active": True
+        "is_active": True,
+        "company_id": user.id,
     }).execute()
 
     if not response.data:
@@ -23,70 +67,85 @@ def create_job(job: JobCreate):
 
     job_data = cast(dict[str, Any], response.data[0])
     job_data["applicant_count"] = 0
+    job_data["average_score"] = 0.0
+    job_data["company_name"] = user.display_name
     return job_data
 
 
-
 @router.get("/", response_model=list[JobResponse])
-def get_jobs():
-    response = supabase.table("jobs").select("*, resumes(overall_score)").eq("is_active", True).order("created_at", desc=True).execute()
-    
-    jobs = []
-    if response.data:
-        for job in response.data:
-            job_dict = cast(dict[str, Any], job)
-            resumes_list = job_dict.get("resumes")
-            
-            applicant_count = 0
-            average_score = 0.0
-            
-            if isinstance(resumes_list, list) and resumes_list:
-                applicant_count = len(resumes_list)
-                valid_scores: list[int] = []
-                for r in resumes_list:
-                    if isinstance(r, dict):
-                        score = r.get("overall_score")
-                        if score is not None:
-                            valid_scores.append(int(score))
-                if valid_scores:
-                    average_score = sum(valid_scores) / len(valid_scores)
-            
-            job_dict["applicant_count"] = applicant_count
-            job_dict["average_score"] = round(average_score, 1)
-            
-            if "resumes" in job_dict:
-                del job_dict["resumes"]
-            jobs.append(job_dict)
-    
-    return jobs
+def get_jobs(
+    mine: Optional[bool] = False,
+    user: AuthUser | None = Depends(get_optional_user),
+):
+    """
+    Public endpoint — returns all active jobs with company name.
+    If `mine=true` is passed (and user is authenticated as company),
+    returns only that company's jobs.
+    """
+    query = (
+        supabase.table("jobs")
+        .select("*, resumes(overall_score), profiles(display_name)")
+        .eq("is_active", True)
+        .order("created_at", desc=True)
+    )
+
+    if mine and user and user.role == "company":
+        query = query.eq("company_id", user.id)
+
+    response = query.execute()
+    raw = response.data or []
+    return _enrich_jobs(raw)
 
 
-@router.put("/{job_id}", response_model = JobResponse)            #update a particular job endpoint
-def update_job(job_id: str, job: JobCreate):
-    response = (supabase.table("jobs")
-                .update({
-                    "title": job.title,
-                    "description": job.description,
-                    "requirements": job.requirements
-                })
-                .eq("id", job_id)
-                .execute())
+@router.put("/{job_id}", response_model=JobResponse)
+def update_job(job_id: str, job: JobCreate, user: AuthUser = Depends(get_current_user)):
+    """Update a job listing. Requires ownership."""
+    # Ownership check
+    existing = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    owner_id = cast(dict[str, Any], existing.data[0]).get("company_id")
+    if owner_id != user.id:
+        raise HTTPException(status_code=403, detail="You do not own this job listing")
+
+    response = (
+        supabase.table("jobs")
+        .update({
+            "title": job.title,
+            "description": job.description,
+            "requirements": job.requirements,
+            "location": job.location,
+            "employment_type": job.employment_type,
+            "department": job.department,
+            "application_deadline": job.application_deadline.isoformat() if job.application_deadline else None,
+        })
+        .eq("id", job_id)
+        .execute()
+    )
     if not response.data:
-        raise HTTPException(
-            status_code = 404,
-            detail = "The job you're trying to update does not exist or cannot be found"
-        )
-    return response.data[0]
+        raise HTTPException(status_code=404, detail="Job not found or update failed")
+
+    job_data = cast(dict[str, Any], response.data[0])
+    job_data.setdefault("applicant_count", 0)
+    job_data.setdefault("average_score", 0.0)
+    job_data.setdefault("company_name", user.display_name)
+    return job_data
 
 
-@router.delete("/{job_id}")                                        #delete a particular job endpoint (soft delete by setting is_active to False)
-def delete_job(job_id: str):
+@router.delete("/{job_id}")
+def delete_job(job_id: str, user: AuthUser = Depends(get_current_user)):
+    """Soft-delete a job listing. Requires ownership."""
+    existing = supabase.table("jobs").select("company_id").eq("id", job_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    owner_id = cast(dict[str, Any], existing.data[0]).get("company_id")
+    if owner_id != user.id:
+        raise HTTPException(status_code=403, detail="You do not own this job listing")
+
     response = supabase.table("jobs").update({"is_active": False}).eq("id", job_id).execute()
-
     if not response.data:
-        raise HTTPException(
-            status_code=404,
-            detail="The job you're trying to delete does not exist or cannot be found")
+        raise HTTPException(status_code=404, detail="Job not found")
 
     return {"message": "Job deleted successfully"}
-    

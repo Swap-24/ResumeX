@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import jobs, resumes
+from app.routers import jobs, resumes, auth
 
 app = FastAPI(title = "ResumeX", description = "ResumeX is a web app that allows real time ranking of resumes based on job descriptions using AI")  #initialize app
 
@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])          #include jobs router
 app.include_router(resumes.router, tags=["Resumes"])  #include resumes router
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])           #include auth router
 
 
 @app.get("/health")

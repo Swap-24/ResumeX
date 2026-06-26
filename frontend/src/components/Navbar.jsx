@@ -1,14 +1,13 @@
 import React from 'react';
-import { Briefcase, User } from 'lucide-react';
+import { Briefcase, User, LogOut } from 'lucide-react';
 
-const Navbar = ({ userMode, setUserMode }) => {
+const Navbar = ({ role, displayName, isGuest, onLogout }) => {
+  const isCompany = role === 'company';
+
   return (
     <nav className="glass-panel sticky top-0 z-50 px-6 py-4 flex items-center justify-between border-b border-white/5">
       {/* Logo Branding */}
-      <div 
-        onClick={() => setUserMode('landing')}
-        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-all select-none"
-      >
+      <div className="flex items-center gap-2 select-none">
         <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
           <span className="font-display font-extrabold text-2xl text-white">R</span>
         </div>
@@ -22,34 +21,33 @@ const Navbar = ({ userMode, setUserMode }) => {
         </div>
       </div>
 
-      {/* Mode Switcher */}
-      <div className="relative p-1 bg-dark-bg border border-white/5 rounded-xl flex items-center gap-1">
-        {/* Background slider pill */}
-        {userMode !== 'landing' && (
-          <div
-            className={`absolute top-1 bottom-1 w-[150px] bg-brand-600 rounded-lg transition-all duration-300 ease-out shadow-lg shadow-brand-500/25 ${userMode === 'candidate' ? 'left-[158px]' : 'left-1'
-              }`}
-          />
+      {/* Right side: role badge + user info + logout */}
+      <div className="flex items-center gap-3">
+        {/* Role badge */}
+        <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold ${
+          isCompany
+            ? 'bg-brand-500/10 border-brand-500/30 text-brand-300'
+            : 'bg-white/5 border-white/10 text-gray-400'
+        }`}>
+          {isCompany ? <Briefcase className="h-3.5 w-3.5" /> : <User className="h-3.5 w-3.5" />}
+          {isCompany ? 'Employer' : isGuest ? 'Guest' : 'Job Seeker'}
+        </div>
+
+        {/* Display name */}
+        {displayName && !isGuest && (
+          <span className="hidden md:block text-sm text-gray-300 font-medium max-w-[160px] truncate">
+            {displayName}
+          </span>
         )}
 
-        {/* Employer Tab */}
+        {/* Logout */}
         <button
-          onClick={() => setUserMode('employer')}
-          className={`relative z-10 w-[150px] py-2 flex items-center justify-center gap-2 font-display text-sm font-semibold rounded-lg transition-colors duration-300 ${userMode === 'employer' ? 'text-white' : 'text-gray-400 hover:text-white'
-            }`}
+          onClick={onLogout}
+          title={isGuest ? 'Back to login' : 'Sign out'}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-white/5 hover:border-rose-500/30 text-gray-400 hover:text-rose-400 transition-all duration-200 text-xs font-medium cursor-pointer"
         >
-          <Briefcase className="h-4 w-4" />
-          Employer Portal
-        </button>
-
-        {/* Candidate Tab */}
-        <button
-          onClick={() => setUserMode('candidate')}
-          className={`relative z-10 w-[150px] py-2 flex items-center justify-center gap-2 font-display text-sm font-semibold rounded-lg transition-colors duration-300 ${userMode === 'candidate' ? 'text-white' : 'text-gray-400 hover:text-white'
-            }`}
-        >
-          <User className="h-4 w-4" />
-          Job Seeker
+          <LogOut className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{isGuest ? 'Login' : 'Sign out'}</span>
         </button>
       </div>
     </nav>

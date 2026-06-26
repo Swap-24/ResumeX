@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { UploadCloud } from 'lucide-react';
 
-const ApplyForm = ({ selectedJob, onApply, isSubmitting, onCancel }) => {
+const ApplyForm = ({ selectedJob, onApply, isSubmitting, onCancel, userEmail = '', userName = '' }) => {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    name: userName || '',
+    email: userEmail || '',
     file: null,
   });
   const [dragActive, setDragActive] = useState(false);
@@ -80,8 +80,11 @@ const ApplyForm = ({ selectedJob, onApply, isSubmitting, onCancel }) => {
             type="text"
             required
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full bg-dark-bg/60 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-sm"
+            onChange={(e) => !userName && setFormData({ ...formData, name: e.target.value })}
+            readOnly={!!userName}
+            className={`w-full bg-dark-bg/60 border rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-sm ${
+              userName ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-white/10'
+            }`}
             placeholder="e.g. John Doe"
           />
         </div>
@@ -92,8 +95,11 @@ const ApplyForm = ({ selectedJob, onApply, isSubmitting, onCancel }) => {
             type="email"
             required
             value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            className="w-full bg-dark-bg/60 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-sm"
+            onChange={(e) => !userEmail && setFormData({ ...formData, email: e.target.value })}
+            readOnly={!!userEmail}
+            className={`w-full bg-dark-bg/60 border rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-sm ${
+              userEmail ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-white/10'
+            }`}
             placeholder="e.g. johndoe@example.com"
           />
         </div>

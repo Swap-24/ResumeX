@@ -26,6 +26,8 @@ class JobResponse(BaseModel):
     created_at: datetime
     applicant_count: Optional[int] = 0
     average_score: Optional[float] = 0.0
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
 
 #Resume Schemas
 
