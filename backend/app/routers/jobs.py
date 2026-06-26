@@ -14,7 +14,8 @@ def create_job(job: JobCreate):
         "location": job.location,
         "application_deadline": job.application_deadline.isoformat() if job.application_deadline else None,
         "employment_type": job.employment_type,
-        "department": job.department
+        "department": job.department,
+        "is_active": True
     }).execute()
 
     if not response.data:

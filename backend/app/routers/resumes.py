@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Response
 from app.database import supabase
 from app.models.schemas import ResumeResponse
 from app.services.pdf_parser import extract_text_from_pdf
@@ -180,3 +180,27 @@ def get_candidate_applications(email: str):
             app_dict["messages"] = msg_response.data
     
     return response.data
+
+@router.get("/resumes/{resume_id}/download")
+def download_resume(resume_id: str):
+    try:
+        resume_response = supabase.table("resumes").select("job_id, candidate_email").eq("id", resume_id).execute()
+        if not resume_response.data:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        
+        resume = cast(dict[str, Any], resume_response.data[0])
+        file_path = f"{resume.get('job_id')}/{resume.get('candidate_email')}.pdf"
+        
+        file_bytes = supabase.storage.from_("resumes").download(file_path)
+        
+        return Response(
+            content=file_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={resume.get('candidate_email')}.pdf"
+            }
+        )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
