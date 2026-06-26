@@ -109,7 +109,7 @@ const CandidateRow = ({
                   candidate.application_status
                 )}`}
               >
-                {candidate.application_status}
+                {candidate.application_status === 'under_review' ? 'Applied' : candidate.application_status}
               </span>
             </div>
           </div>

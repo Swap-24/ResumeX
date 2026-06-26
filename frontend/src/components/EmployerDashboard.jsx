@@ -21,7 +21,7 @@ const EmployerDashboard = ({ jobs, onCreateJob, onSelectJob }) => {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
+    <div className="p-8 pb-20 max-w-7xl mx-auto space-y-8 animate-fade-in">
       {/* Header and Stats */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-6">
         <div>

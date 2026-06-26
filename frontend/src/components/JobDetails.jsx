@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, Trash2, X } from 'lucide-react';
 import JobSidebar from './JobDetails/JobSidebar';
 import CandidateRow from './JobDetails/CandidateRow';
 import BulkActionsBar from './JobDetails/BulkActionsBar';
 
-const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlist, onBulkReject }) => {
+const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlist, onBulkReject, onDeleteJob }) => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkMessage, setBulkMessage] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Reset selected IDs when job changes
   useEffect(() => {
@@ -73,16 +74,26 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
+    <div className="p-8 pb-20 max-w-7xl mx-auto space-y-8 animate-fade-in">
       {/* Back navigation & header info */}
       <div className="space-y-4">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Listings
-        </button>
+        <div className="flex justify-between items-center">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Listings
+          </button>
+          
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 hover:border-rose-500/40 rounded-xl transition-all duration-300 cursor-pointer text-xs font-semibold"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Listing
+          </button>
+        </div>
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-6">
           <div className="space-y-1">
@@ -184,6 +195,51 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
           onReject={() => handleBulkAction('reject')}
           onShortlist={() => handleBulkAction('shortlist')}
         />
+      )}
+
+      {/* Confirmation Modal for Deletion */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in select-none">
+          <div className="glass-panel w-full max-w-md rounded-2xl shadow-2xl border border-white/10 p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <h3 className="font-display font-extrabold text-lg text-white">Delete Job Listing?</h3>
+              <button 
+                onClick={() => setShowDeleteModal(false)}
+                className="text-gray-400 hover:text-white p-1 hover:bg-white/5 rounded-lg cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-gray-300 text-sm leading-relaxed">
+                Are you sure you want to delete <strong className="text-white">"{job.title}"</strong>? 
+              </p>
+              <p className="text-rose-400/90 text-xs bg-rose-500/5 border border-rose-500/10 p-3 rounded-xl">
+                This action is permanent and will remove the job listing as well as all candidate applications linked to it.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl font-semibold text-white transition-all text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteJob(job.id);
+                  setShowDeleteModal(false);
+                  onBack();
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-rose-500/25 hover:scale-102 text-sm cursor-pointer"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

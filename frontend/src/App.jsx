@@ -43,6 +43,18 @@ const App = () => {
     }
   };
 
+  // Auto-poll every 4s while any candidates are still analyzing
+  useEffect(() => {
+    const hasAnalyzing = candidates.some(c => c.status === 'analyzing');
+    if (!selectedJob || !hasAnalyzing) return;
+
+    const timer = setInterval(() => {
+      fetchCandidates(selectedJob.id, false);
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [candidates, selectedJob]);
+
   // Fetch candidates for a specific job
   const fetchCandidates = async (jobId, shouldRefreshSelected = true) => {
     try {
@@ -75,6 +87,18 @@ const App = () => {
     } catch (error) {
       console.error("Error creating job:", error);
       alert("Failed to create job listing. Please check input values.");
+    }
+  };
+
+  // Delete a job listing
+  const handleDeleteJob = async (jobId) => {
+    try {
+      await axios.delete(`${API_BASE_URL}/jobs/${jobId}`);
+      fetchJobs();
+      alert("Job listing deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting job:", error);
+      alert("Failed to delete job listing. Please try again.");
     }
   };
 
@@ -209,7 +233,7 @@ const App = () => {
       {userMode !== 'landing' && <Navbar userMode={userMode} setUserMode={setUserMode} />}
 
       {/* Main Content Areas */}
-      <main className={`flex-1 w-full ${userMode === 'landing' ? '' : 'pb-20'}`}>
+      <main className="flex-1 w-full">
         {userMode === 'landing' ? (
           <LandingPage onSelectMode={setUserMode} />
         ) : userMode === 'employer' ? (
@@ -229,6 +253,7 @@ const App = () => {
               onSelectCandidate={handleSelectCandidate}
               onBulkShortlist={handleBulkShortlist}
               onBulkReject={handleBulkReject}
+              onDeleteJob={handleDeleteJob}
             />
           ) : (
             <EmployerDashboard

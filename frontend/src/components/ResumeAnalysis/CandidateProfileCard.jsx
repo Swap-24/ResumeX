@@ -83,7 +83,7 @@ const CandidateProfileCard = ({ candidate, scoreInfo }) => {
         {/* Status & Download Resume */}
         <div className="flex flex-col gap-2 pt-2">
           <span className="text-xs font-semibold text-gray-400">
-            Current Status: <span className="text-white capitalize">{candidate.application_status}</span>
+            Current Status: <span className="text-white capitalize">{candidate.application_status === 'under_review' ? 'Applied' : candidate.application_status}</span>
           </span>
           <a
             href={`http://localhost:8000/resumes/${candidate.id}/download`}

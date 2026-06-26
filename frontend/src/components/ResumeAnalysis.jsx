@@ -36,7 +36,7 @@ const ResumeAnalysis = ({ candidate, onBack, onUpdateStatus, onSendMessage }) =>
   const scoreInfo = getScoreLabel(candidate.overall_score || 0);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
+    <div className="p-8 pb-20 max-w-7xl mx-auto space-y-8 animate-fade-in">
       {/* Back button */}
       <div>
         <button

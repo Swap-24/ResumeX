@@ -23,19 +23,24 @@ class IndividualMessageRequest(BaseModel):
     message: str
 
 def run_pipeline(resume_id: str, job_id: str, raw_text: str):
-    pipeline.invoke({
-        "resume_id": resume_id,
-        "job_id": job_id,
-        "raw_text": raw_text,
-        "job_description": "",
-        "job_requirements": "",
-        "evaluator_sections": None,
-        "profiler_sections": None,
-        "scored_sections": None,
-        "overall_score": None,
-        "overall_summary": None,
-        "error": None
-    })
+    try:
+        pipeline.invoke({
+            "resume_id": resume_id,
+            "job_id": job_id,
+            "raw_text": raw_text,
+            "job_description": "",
+            "job_requirements": "",
+            "evaluator_sections": None,
+            "profiler_sections": None,
+            "scored_sections": None,
+            "overall_score": None,
+            "overall_summary": None,
+            "error": None
+        })
+    except Exception as e:
+        # Ensure the record is never left stuck in 'analyzing'
+        print(f"[Pipeline Error] resume_id={resume_id}: {e}")
+        supabase.table("resumes").update({"status": "failed"}).eq("id", resume_id).execute()
 
 
 @router.post("/jobs/{job_id}/resumes")
@@ -74,21 +79,29 @@ async def upload_resume(
     if not raw_text.strip():
         raise HTTPException(status_code=400, detail="Could not extract text from PDF")
 
-    # upload file to supabase storage
+    # upload file to supabase storage (upsert=true so re-applications overwrite existing file)
     file_path = f"{job_id}/{candidate_email}.pdf"
-    supabase.storage.from_("resumes").upload(file_path, file_bytes, {"content-type": "application/pdf"})
+    try:
+        supabase.storage.from_("resumes").upload(
+            file_path, file_bytes,
+            {"content-type": "application/pdf", "upsert": "true"}
+        )
+    except Exception as storage_err:
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {storage_err}")
     file_url = supabase.storage.from_("resumes").get_public_url(file_path)
 
     # create resume row
-    response = supabase.table("resumes").insert({
-        "job_id": job_id,
-        "candidate_name": candidate_name,
-        "candidate_email": candidate_email,
-        "file_url": file_url,
-        "raw_text": raw_text,
-        "status": "analyzing",
-        "application_status": "applied"
-    }).execute()
+    try:
+        response = supabase.table("resumes").insert({
+            "job_id": job_id,
+            "candidate_name": candidate_name,
+            "candidate_email": candidate_email,
+            "file_url": file_url,
+            "raw_text": raw_text,
+            "status": "analyzing",
+        }).execute()
+    except Exception as db_err:
+        raise HTTPException(status_code=500, detail=f"Failed to save resume record: {db_err}")
 
     if not response.data:
         raise HTTPException(status_code=500, detail="Failed to create resume record")

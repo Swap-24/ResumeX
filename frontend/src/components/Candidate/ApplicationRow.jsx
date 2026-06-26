@@ -21,6 +21,7 @@ const ApplicationRow = ({ app }) => {
           info: 'Thank you for your time. The recruiter has decided not to proceed with your application.'
         };
       case 'applied':
+      case 'under_review':
       default:
         return {
           icon: <Clock className="h-4 w-4 text-blue-400" />,
