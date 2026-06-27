@@ -5,6 +5,4 @@ supabase
 pydantic
 python-dotenv
 pdfplumber
-google-genai
-langgraph
 python-jose[cryptography]

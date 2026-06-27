@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Response
 from app.database import supabase
 from app.services.pdf_parser import extract_text_from_pdf
-from app.pipeline.graph import pipeline
+from app.services.local_analyzer import analyze_resume_locally, compute_label
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Optional, cast, Any
-
 
 
 router = APIRouter()
@@ -25,21 +24,46 @@ class IndividualMessageRequest(BaseModel):
 
 def run_pipeline(resume_id: str, job_id: str, raw_text: str):
     try:
-        pipeline.invoke({
-            "resume_id": resume_id,
-            "job_id": job_id,
-            "raw_text": raw_text,
-            "job_description": "",
-            "job_requirements": "",
-            "evaluator_sections": None,
-            "profiler_sections": None,
-            "scored_sections": None,
-            "overall_score": None,
-            "overall_summary": None,
-            "error": None
-        })
+        # Fetch job description and requirements
+        job_response = supabase.table("jobs").select("title, description, requirements").eq("id", job_id).execute()
+        if not job_response.data:
+            raise Exception("Job not found")
+
+        job = job_response.data[0]
+        title = job.get("title", "")
+        desc = job.get("description", "")
+        reqs = job.get("requirements", "")
+
+        # Run local analyzer
+        analysis = analyze_resume_locally(raw_text, title, desc, reqs)
+
+        # Save sections
+        section_rows = []
+        for idx, sec in enumerate(analysis["scored_sections"]):
+            section_rows.append({
+                "resume_id": resume_id,
+                "section_key": sec["section_key"],
+                "section_label": sec["section_label"],
+                "score": sec["score"],
+                "label": compute_label(sec["score"]),
+                "summary": sec["summary"],
+                "positives": sec["positives"],
+                "negatives": sec["negatives"],
+                "missing": sec["missing"],
+                "display_order": idx
+            })
+
+        supabase.table("resume_sections").insert(section_rows).execute()
+
+        # Update resume record
+        supabase.table("resumes").update({
+            "overall_score": analysis["overall_score"],
+            "overall_summary": analysis["overall_summary"],
+            "status": "done",
+            "analyzed_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", resume_id).execute()
+
     except Exception as e:
-        # Ensure the record is never left stuck in 'analyzing'
         print(f"[Pipeline Error] resume_id={resume_id}: {e}")
         supabase.table("resumes").update({
             "status": "failed",
