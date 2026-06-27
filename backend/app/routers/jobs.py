@@ -60,6 +60,8 @@ def create_job(job: JobCreate, user: AuthUser = Depends(get_current_user)):
         "department": job.department,
         "is_active": True,
         "company_id": user.id,
+        "default_shortlist_message": job.default_shortlist_message,
+        "default_rejection_message": job.default_rejection_message,
     }).execute()
 
     if not response.data:
@@ -93,7 +95,7 @@ def get_jobs(
         query = query.eq("company_id", user.id)
 
     response = query.execute()
-    raw = response.data or []
+    raw = cast(list[dict[str, Any]], response.data or [])
     return _enrich_jobs(raw)
 
 
@@ -119,6 +121,8 @@ def update_job(job_id: str, job: JobCreate, user: AuthUser = Depends(get_current
             "employment_type": job.employment_type,
             "department": job.department,
             "application_deadline": job.application_deadline.isoformat() if job.application_deadline else None,
+            "default_shortlist_message": job.default_shortlist_message,
+            "default_rejection_message": job.default_rejection_message,
         })
         .eq("id", job_id)
         .execute()

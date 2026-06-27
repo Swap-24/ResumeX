@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { Send } from 'lucide-react';
 
-const DecisionForm = ({ onSubmitAction, onSendOnlyMessage }) => {
+const DecisionForm = ({
+  onSubmitAction,
+  onSendOnlyMessage,
+  defaultShortlistMessage,
+  defaultRejectionMessage,
+}) => {
   const [individualMessage, setIndividualMessage] = useState('');
 
   const handleAction = (status) => {
@@ -28,6 +33,30 @@ const DecisionForm = ({ onSubmitAction, onSendOnlyMessage }) => {
           className="w-full bg-dark-bg/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-xs leading-relaxed"
           placeholder="Type response message here... (Required for sending messages, optional for shortlist/reject decisions)"
         />
+
+        {(defaultShortlistMessage || defaultRejectionMessage) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Use templates:</span>
+            {defaultShortlistMessage && (
+              <button
+                type="button"
+                onClick={() => setIndividualMessage(defaultShortlistMessage)}
+                className="text-[10px] bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 px-2.5 py-1 rounded border border-brand-500/20 transition-all cursor-pointer font-medium"
+              >
+                Shortlist
+              </button>
+            )}
+            {defaultRejectionMessage && (
+              <button
+                type="button"
+                onClick={() => setIndividualMessage(defaultRejectionMessage)}
+                className="text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-2.5 py-1 rounded border border-rose-500/20 transition-all cursor-pointer font-medium"
+              >
+                Rejection
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <button

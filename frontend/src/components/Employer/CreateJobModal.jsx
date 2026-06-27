@@ -10,6 +10,8 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
     employment_type: 'Full-time',
     department: '',
     application_deadline: '',
+    default_shortlist_message: '',
+    default_rejection_message: '',
   });
 
   const dateInputRef = useRef(null);
@@ -170,6 +172,29 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
               className="w-full bg-dark-bg/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-sm"
               placeholder="List qualifications, required skills, tools, and years of experience..."
             />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Default Shortlist Message</label>
+              <textarea
+                rows={3}
+                value={formData.default_shortlist_message}
+                onChange={(e) => setFormData({ ...formData, default_shortlist_message: e.target.value })}
+                className="w-full bg-dark-bg/60 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-xs leading-relaxed"
+                placeholder="e.g. Congratulations! We would love to move forward with your application."
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Default Rejection Message</label>
+              <textarea
+                rows={3}
+                value={formData.default_rejection_message}
+                onChange={(e) => setFormData({ ...formData, default_rejection_message: e.target.value })}
+                className="w-full bg-dark-bg/60 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 text-xs leading-relaxed"
+                placeholder="e.g. Thank you for your interest. Unfortunately, we have decided not to proceed."
+              />
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 border-t border-white/5 pt-4 bg-dark-card/30 -mx-6 -mb-6 px-6 py-4">

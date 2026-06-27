@@ -1,5 +1,6 @@
 import React from 'react';
 import { Eye, EyeOff, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const AnalysisSectionCard = ({ section, isExpanded, onToggleExpand, getScoreLabel }) => {
   const sectionStyle = getScoreLabel(section.score);
@@ -91,63 +92,71 @@ const AnalysisSectionCard = ({ section, isExpanded, onToggleExpand, getScoreLabe
       </div>
 
       {/* Expanded bullet details: Positives, Negatives, Missing */}
-      {isExpanded && (
-        <div 
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-white/5 pt-4 animate-fade-in text-xs leading-relaxed"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Positives */}
-          <div className="space-y-2">
-            <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-              <CheckCircle className="h-4 w-4" />
-              Positives
-            </span>
-            {section.positives?.length > 0 ? (
-              <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
-                {section.positives.map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-gray-500 italic pl-1">None reported</p>
-            )}
-          </div>
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+            animate={{ height: 'auto', opacity: 1, marginTop: 16 }}
+            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+            transition={{ type: 'spring', stiffness: 350, damping: 32 }}
+            className="overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-white/5 pt-4 text-xs leading-relaxed">
+              {/* Positives */}
+              <div className="space-y-2">
+                <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle className="h-4 w-4" />
+                  Positives
+                </span>
+                {section.positives?.length > 0 ? (
+                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
+                    {section.positives.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 italic pl-1">None reported</p>
+                )}
+              </div>
 
-          {/* Negatives */}
-          <div className="space-y-2">
-            <span className="font-semibold text-rose-400 flex items-center gap-1.5">
-              <AlertCircle className="h-4 w-4" />
-              Negatives / Flags
-            </span>
-            {section.negatives?.length > 0 ? (
-              <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
-                {section.negatives.map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-gray-500 italic pl-1">None reported</p>
-            )}
-          </div>
+              {/* Negatives */}
+              <div className="space-y-2">
+                <span className="font-semibold text-rose-400 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4" />
+                  Negatives / Flags
+                </span>
+                {section.negatives?.length > 0 ? (
+                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
+                    {section.negatives.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 italic pl-1">None reported</p>
+                )}
+              </div>
 
-          {/* Missing */}
-          <div className="space-y-2">
-            <span className="font-semibold text-amber-400 flex items-center gap-1.5">
-              <AlertTriangle className="h-4 w-4" />
-              Missing Items
-            </span>
-            {section.missing?.length > 0 ? (
-              <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
-                {section.missing.map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-gray-500 italic pl-1">None reported</p>
-            )}
-          </div>
-        </div>
-      )}
+              {/* Missing */}
+              <div className="space-y-2">
+                <span className="font-semibold text-amber-400 flex items-center gap-1.5">
+                  <AlertTriangle className="h-4 w-4" />
+                  Missing Items
+                </span>
+                {section.missing?.length > 0 ? (
+                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
+                    {section.missing.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 italic pl-1">None reported</p>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

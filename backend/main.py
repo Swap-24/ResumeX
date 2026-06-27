@@ -8,7 +8,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174"
     ],            # restricts origin access to localhost:5173 and 127.0.0.1:5173
     allow_credentials=True,         #allows cookies and auth headers
     allow_methods=["*"],            #allows all HTTP methods

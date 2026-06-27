@@ -1,18 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, FileText, Trash2, X } from 'lucide-react';
+import { ArrowLeft, FileText, Trash2, X, Download } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import JobSidebar from './JobDetails/JobSidebar';
 import CandidateRow from './JobDetails/CandidateRow';
 import BulkActionsBar from './JobDetails/BulkActionsBar';
+import WeightSidebar from './JobDetails/WeightSidebar';
 
-const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlist, onBulkReject, onDeleteJob }) => {
+const JobDetails = ({
+  job,
+  candidates,
+  onBack,
+  onSelectCandidate,
+  onBulkShortlist,
+  onBulkReject,
+  onDeleteJob,
+  onUpdateJob,
+  onRetryAnalysis,
+  sliders,
+  setSliders,
+  calculateDynamicScore,
+}) => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkMessage, setBulkMessage] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRejectRemainingModal, setShowRejectRemainingModal] = useState(false);
+  const [scoreThreshold, setScoreThreshold] = useState('');
+  const [rankThreshold, setRankThreshold] = useState('');
 
   // Reset selected IDs when job changes
   useEffect(() => {
     setSelectedIds([]);
     setBulkMessage('');
+    setScoreThreshold('');
+    setRankThreshold('');
   }, [job]);
 
   const handleSelectToggle = (id) => {
@@ -21,20 +41,72 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
     );
   };
 
-  const handleSelectTop = (count) => {
-    const validCandidates = candidates
-      .filter((c) => c.status === 'done')
-      .slice(0, count)
+  // Calculate dynamic candidates with overall score overridden
+  const dynamicCandidates = candidates.map((c) => {
+    if (c.status !== 'done') return c;
+    const dynamicScore = calculateDynamicScore(c, sliders);
+    return { ...c, overall_score: dynamicScore };
+  });
+
+  // Sort candidates dynamically: 'done' ones sorted by dynamic overall_score, others kept at bottom
+  const sortedCandidates = [...dynamicCandidates].sort((a, b) => {
+    if (a.status !== 'done' && b.status !== 'done') return 0;
+    if (a.status !== 'done') return 1;
+    if (b.status !== 'done') return -1;
+    return b.overall_score - a.overall_score;
+  });
+
+  // Compute dynamic Average Match score
+  const activeScores = dynamicCandidates
+    .filter((c) => c.status === 'done')
+    .map((c) => c.overall_score);
+  const dynamicAverageScore = activeScores.length > 0
+    ? Math.round(activeScores.reduce((sum, score) => sum + score, 0) / activeScores.length)
+    : 0;
+
+  const handleScoreThresholdChange = (val) => {
+    setScoreThreshold(val);
+    setRankThreshold('');
+    if (val === '') {
+      setSelectedIds([]);
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (isNaN(num)) return;
+    const matching = sortedCandidates
+      .filter((c) => c.status === 'done' && c.application_status !== 'shortlisted' && c.overall_score >= num)
       .map((c) => c.id);
-    setSelectedIds(validCandidates);
+    setSelectedIds(matching);
+  };
+
+  const handleRankThresholdChange = (val) => {
+    setRankThreshold(val);
+    setScoreThreshold('');
+    if (val === '') {
+      setSelectedIds([]);
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (isNaN(num)) return;
+    const matching = sortedCandidates
+      .filter((c) => c.status === 'done' && c.application_status !== 'shortlisted')
+      .slice(0, num)
+      .map((c) => c.id);
+    setSelectedIds(matching);
   };
 
   const handleSelectAll = () => {
-    setSelectedIds(candidates.map((c) => c.id));
+    setSelectedIds(
+      sortedCandidates
+        .filter((c) => c.status === 'done' && c.application_status !== 'shortlisted')
+        .map((c) => c.id)
+    );
   };
 
   const handleDeselectAll = () => {
     setSelectedIds([]);
+    setScoreThreshold('');
+    setRankThreshold('');
   };
 
   const handleBulkAction = (action) => {
@@ -46,6 +118,49 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
     }
     setSelectedIds([]);
     setBulkMessage('');
+    setScoreThreshold('');
+    setRankThreshold('');
+  };
+
+  const handleExportCSV = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    try {
+      // Build query string from slider values + job_id
+      const params = new URLSearchParams();
+      params.append('job_id', job.id);
+      Object.entries(sliders).forEach(([key, value]) => {
+        params.append(key, value.toString());
+      });
+
+      const url = `http://localhost:8000/export/candidate_rankings.csv?${params.toString()}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Export failed: ${response.status}`);
+      const csvText = await response.text();
+
+      // Try native file save dialog (File System Access API — works in Electron/Chromium)
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'candidate_rankings.csv',
+          types: [{ description: 'CSV Files', accept: { 'text/csv': ['.csv'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(csvText);
+        await writable.close();
+        console.log('[ResumeX] CSV saved via file picker.');
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(csvText);
+        alert('CSV copied to clipboard! Paste into a .csv file to save.');
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        console.error('[ResumeX] CSV export error:', err);
+      }
+    }
   };
 
   const getBadgeStyle = (label) => {
@@ -112,7 +227,7 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
             <div className="h-8 w-px bg-white/10" />
             <div className="text-center">
               <span className="block text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Avg Match</span>
-              <span className="text-xl font-extrabold text-brand-400 mt-1 block">{job.average_score}%</span>
+              <span className="text-xl font-extrabold text-brand-400 mt-1 block">{dynamicAverageScore}%</span>
             </div>
           </div>
         </div>
@@ -120,8 +235,11 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Job Details Card */}
-        <JobSidebar description={job.description} requirements={job.requirements} />
+        {/* Job Details Card & Weight configuration */}
+        <div className="space-y-6 h-fit">
+          <JobSidebar job={job} onUpdateJob={onUpdateJob} />
+          <WeightSidebar sliders={sliders} setSliders={setSliders} />
+        </div>
 
         {/* Candidate List Table */}
         <div className="lg:col-span-2 space-y-4">
@@ -131,23 +249,43 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
             {/* Quick selectors */}
             {candidates.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => handleSelectTop(3)}
-                  className="text-xs bg-white/5 hover:bg-white/10 text-gray-300 px-2.5 py-1.5 rounded-lg border border-white/5 cursor-pointer"
-                >
-                  Top 3
-                </button>
-                <button
-                  onClick={() => handleSelectTop(5)}
-                  className="text-xs bg-white/5 hover:bg-white/10 text-gray-300 px-2.5 py-1.5 rounded-lg border border-white/5 cursor-pointer"
-                >
-                  Top 5
-                </button>
+                <div className="flex items-center gap-1 bg-white/5 border border-white/5 rounded-lg px-2.5 py-1 text-xs">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Score &ge;</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={scoreThreshold}
+                    onChange={(e) => handleScoreThresholdChange(e.target.value)}
+                    className="bg-transparent text-white w-9 focus:outline-none text-center font-semibold text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="--"
+                  />
+                </div>
+                <div className="flex items-center gap-1 bg-white/5 border border-white/5 rounded-lg px-2.5 py-1 text-xs">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Rank &le;</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={candidates.length}
+                    value={rankThreshold}
+                    onChange={(e) => handleRankThresholdChange(e.target.value)}
+                    className="bg-transparent text-white w-9 focus:outline-none text-center font-semibold text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="--"
+                  />
+                </div>
                 <button
                   onClick={handleSelectAll}
                   className="text-xs bg-white/5 hover:bg-white/10 text-gray-300 px-2.5 py-1.5 rounded-lg border border-white/5 cursor-pointer"
                 >
                   Select All
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="text-xs bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 px-2.5 py-1.5 rounded-lg border border-brand-500/20 cursor-pointer font-semibold transition-all flex items-center gap-1.5"
+                  title="Export current ranked candidates to CSV"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
                 </button>
                 {selectedIds.length > 0 && (
                   <button
@@ -155,6 +293,14 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
                     className="text-xs bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 px-2.5 py-1.5 rounded-lg border border-brand-500/20 cursor-pointer"
                   >
                     Deselect
+                  </button>
+                )}
+                {candidates.some(c => c.application_status !== 'shortlisted' && c.application_status !== 'rejected') && (
+                  <button
+                    onClick={() => setShowRejectRemainingModal(true)}
+                    className="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-2.5 py-1.5 rounded-lg border border-rose-500/20 cursor-pointer font-semibold transition-all animate-fade-in"
+                  >
+                    Reject Remaining
                   </button>
                 )}
               </div>
@@ -168,20 +314,36 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
               <p className="text-sm mt-1">Candidates applying on the Job Seeker portal will automatically appear here ranked in real-time.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {candidates.map((candidate, idx) => (
-                <CandidateRow
-                  key={candidate.id}
-                  candidate={candidate}
-                  index={idx}
-                  isSelected={selectedIds.includes(candidate.id)}
-                  onSelectToggle={() => handleSelectToggle(candidate.id)}
-                  onSelectCandidate={onSelectCandidate}
-                  getBadgeStyle={getBadgeStyle}
-                  getAppStatusStyle={getAppStatusStyle}
-                />
-              ))}
-            </div>
+            <motion.div className="space-y-3" layout>
+              <AnimatePresence mode="popLayout">
+                {sortedCandidates.map((candidate, idx) => (
+                  <motion.div
+                    key={candidate.id}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 400,
+                      damping: 38,
+                      mass: 0.8
+                    }}
+                  >
+                    <CandidateRow
+                      candidate={candidate}
+                      index={idx}
+                      isSelected={selectedIds.includes(candidate.id)}
+                      onSelectToggle={() => handleSelectToggle(candidate.id)}
+                      onSelectCandidate={onSelectCandidate}
+                      onRetryAnalysis={onRetryAnalysis}
+                      getBadgeStyle={getBadgeStyle}
+                      getAppStatusStyle={getAppStatusStyle}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
           )}
         </div>
       </div>
@@ -194,6 +356,8 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
           onChangeMessage={setBulkMessage}
           onReject={() => handleBulkAction('reject')}
           onShortlist={() => handleBulkAction('shortlist')}
+          defaultShortlistMessage={job.default_shortlist_message}
+          defaultRejectionMessage={job.default_rejection_message}
         />
       )}
 
@@ -236,6 +400,55 @@ const JobDetails = ({ job, candidates, onBack, onSelectCandidate, onBulkShortlis
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-rose-500/25 hover:scale-102 text-sm cursor-pointer"
               >
                 Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Reject Remaining */}
+      {showRejectRemainingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in select-none">
+          <div className="glass-panel w-full max-w-md rounded-2xl shadow-2xl border border-white/10 p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <h3 className="font-display font-extrabold text-lg text-white">Reject Remaining Candidates?</h3>
+              <button 
+                onClick={() => setShowRejectRemainingModal(false)}
+                className="text-gray-400 hover:text-white p-1 hover:bg-white/5 rounded-lg cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-gray-300 text-sm leading-relaxed">
+                Are you sure you want to reject all candidates for <strong className="text-white">"{job.title}"</strong> who have not been shortlisted yet?
+              </p>
+              <p className="text-rose-400/90 text-xs bg-rose-500/5 border border-rose-500/10 p-3 rounded-xl font-medium leading-relaxed">
+                This will reject all {candidates.filter(c => c.application_status !== 'shortlisted' && c.application_status !== 'rejected').length} remaining candidates. Shortlisted candidates will remain untouched.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRejectRemainingModal(false)}
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl font-semibold text-white transition-all text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const remainingIds = candidates
+                    .filter(c => c.application_status !== 'shortlisted' && c.application_status !== 'rejected')
+                    .map(c => c.id);
+                  if (remainingIds.length > 0) {
+                    onBulkReject(remainingIds, job.default_rejection_message || "Thank you for applying. We have decided to proceed with other candidates.");
+                  }
+                  setShowRejectRemainingModal(false);
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-rose-500/25 hover:scale-102 text-sm cursor-pointer"
+              >
+                Confirm Reject Remaining
               </button>
             </div>
           </div>

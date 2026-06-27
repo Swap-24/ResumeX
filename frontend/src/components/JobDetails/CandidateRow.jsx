@@ -7,6 +7,7 @@ const CandidateRow = ({
   isSelected,
   onSelectToggle,
   onSelectCandidate,
+  onRetryAnalysis,
   getBadgeStyle,
   getAppStatusStyle
 }) => {
@@ -14,10 +15,10 @@ const CandidateRow = ({
     candidate.overall_score >= 81
       ? 'Excellent'
       : candidate.overall_score >= 66
-      ? 'Strong'
-      : candidate.overall_score >= 41
-      ? 'Average'
-      : 'Weak';
+        ? 'Strong'
+        : candidate.overall_score >= 41
+          ? 'Average'
+          : 'Weak';
 
   const getGradientStyle = (score) => {
     if (score >= 81) {
@@ -48,9 +49,8 @@ const CandidateRow = ({
 
   return (
     <div
-      className={`glass-panel p-4 rounded-xl flex items-center justify-between border transition-all duration-300 hover:scale-[1.01] ${cardStyle.bg} ${cardStyle.border} ${
-        isSelected ? 'ring-1 ring-brand-500/30' : ''
-      }`}
+      className={`glass-panel p-4 rounded-xl flex items-center justify-between border transition-all duration-300 hover:scale-[1.01] ${cardStyle.bg} ${cardStyle.border} ${isSelected ? 'ring-1 ring-brand-500/30' : ''
+        }`}
     >
       {/* Checkbox and Rank info */}
       <div className="flex items-center gap-4">
@@ -84,10 +84,18 @@ const CandidateRow = ({
             Analyzing...
           </span>
         ) : candidate.status === 'failed' ? (
-          <span className="flex items-center gap-1.5 text-xs text-rose-400 font-medium">
-            <ShieldAlert className="h-3.5 w-3.5" />
-            Failed
-          </span>
+          <div className="flex items-center gap-2 animate-fade-in">
+            <span className="flex items-center gap-1.5 text-xs text-rose-400 font-medium mr-1.5">
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Failed
+            </span>
+            <button
+              onClick={() => onRetryAnalysis(candidate.id)}
+              className="text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-bold px-2.5 py-1 rounded border border-rose-500/20 transition-all cursor-pointer uppercase tracking-wider hover:scale-102 active:scale-98"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-4">
             <div className="text-right">

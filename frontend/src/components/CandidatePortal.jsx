@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Search, FileText, SlidersHorizontal, Briefcase, MapPin, Building2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ApplyForm from './Candidate/ApplyForm';
 import LookupForm from './Candidate/LookupForm';
 import ApplicationRow from './Candidate/ApplicationRow';
 import DotField from './Candidate/DotField';
 import BorderGlow from './BorderGlow';
 import SearchableDropdown from './Candidate/SearchableDropdown';
+import Confetti from './Confetti';
 
 const getRemainingTime = (deadlineStr) => {
   if (!deadlineStr) return null;
@@ -64,6 +66,24 @@ const CandidatePortal = ({
   const [activeView, setActiveView] = useState('jobs'); // 'jobs' | 'apply'
   const [selectedJob, setSelectedJob] = useState(null);
   const [expandedJobId, setExpandedJobId] = useState(null);
+
+  const [triggerConfetti, setTriggerConfetti] = useState(false);
+
+  useEffect(() => {
+    if (candidateApps.length > 0) {
+      // Find any shortlisted application that hasn't celebrated yet (checked via localStorage)
+      const uncelebratedApp = candidateApps.find(
+        (app) =>
+          app.application_status?.toLowerCase() === 'shortlisted' &&
+          !localStorage.getItem(`resumex_celebrated_${app.id}`)
+      );
+
+      if (uncelebratedApp) {
+        setTriggerConfetti(true);
+        localStorage.setItem(`resumex_celebrated_${uncelebratedApp.id}`, 'true');
+      }
+    }
+  }, [candidateApps]);
 
   const [filters, setFilters] = useState({
     title: '',
@@ -137,6 +157,7 @@ const CandidatePortal = ({
 
   return (
     <div className="relative min-h-[calc(100vh-80px)] w-full pt-8 pb-20 px-6 md:px-8 select-none">
+      {triggerConfetti && <Confetti onComplete={() => setTriggerConfetti(false)} />}
       {/* Background DotField */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         <DotField
@@ -221,11 +242,20 @@ const CandidatePortal = ({
                         </button>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {filteredJobs.map((job) => {
-                          const isExpanded = expandedJobId === job.id;
-                          return (
-                            <BorderGlow
+                      <motion.div className="space-y-3" layout>
+                        <AnimatePresence mode="popLayout">
+                          {filteredJobs.map((job) => {
+                            const isExpanded = expandedJobId === job.id;
+                            return (
+                              <motion.div
+                                key={job.id}
+                                layout
+                                initial={{ opacity: 0, y: 15 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                              >
+                                <BorderGlow
                               key={job.id}
                               edgeSensitivity={30}
                               glowColor="262 80 60"
@@ -288,49 +318,59 @@ const CandidatePortal = ({
                               </div>
 
                               {/* Expanded body */}
-                              <div className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                                <div className="overflow-hidden">
-                                  <div className="px-5 pb-5 pt-4 border-t border-white/5 space-y-4">
-                                    {job.description && (
-                                      <div className="space-y-1">
-                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Job Description</h4>
-                                        <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">{job.description}</p>
-                                      </div>
-                                    )}
-                                    {job.requirements && (
-                                      <div className="space-y-1">
-                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Key Requirements</h4>
-                                        <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">{job.requirements}</p>
-                                      </div>
-                                    )}
-                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-2 gap-3">
-                                      {job.application_deadline && (
-                                        <span className="text-xs text-gray-400">
-                                          Apply before:{' '}
-                                          <strong className="text-gray-300">
-                                            {formatDeadline(job.application_deadline)}
-                                          </strong>
-                                        </span>
+                              <AnimatePresence initial={false}>
+                                {isExpanded && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ type: 'spring', stiffness: 350, damping: 32 }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="px-5 pb-5 pt-4 border-t border-white/5 space-y-4">
+                                      {job.description && (
+                                        <div className="space-y-1">
+                                          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Job Description</h4>
+                                          <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">{job.description}</p>
+                                        </div>
                                       )}
-                                      <div className="flex items-center gap-3 ml-auto">
-                                        <button
-                                          onClick={() => {
-                                            setSelectedJob(job);
-                                            setActiveView('apply');
-                                          }}
-                                          className="px-6 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-brand-500/10 transition-all duration-300 hover:scale-102 cursor-pointer"
-                                        >
-                                          Apply Now &rarr;
-                                        </button>
+                                      {job.requirements && (
+                                        <div className="space-y-1">
+                                          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Key Requirements</h4>
+                                          <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">{job.requirements}</p>
+                                        </div>
+                                      )}
+                                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-2 gap-3">
+                                        {job.application_deadline && (
+                                          <span className="text-xs text-gray-400">
+                                            Apply before:{' '}
+                                            <strong className="text-gray-300">
+                                              {formatDeadline(job.application_deadline)}
+                                            </strong>
+                                          </span>
+                                        )}
+                                        <div className="flex items-center gap-3 ml-auto">
+                                          <button
+                                            onClick={() => {
+                                              setSelectedJob(job);
+                                              setActiveView('apply');
+                                            }}
+                                            className="px-6 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-brand-500/10 transition-all duration-300 hover:scale-102 cursor-pointer"
+                                          >
+                                            Apply Now &rarr;
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </div>
-                              </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
                             </BorderGlow>
-                          );
-                        })}
-                      </div>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </motion.div>
                     )}
                   </>
                 )}

@@ -16,10 +16,66 @@ const authHeaders = (session) =>
     ? { Authorization: `Bearer ${session.access_token}` }
     : {};
 
+const DEFAULT_WEIGHTS = {
+  work_experience: 0.20,
+  projects: 0.20,
+  skills: 0.15,
+  education: 0.08,
+  certifications: 0.05,
+  resume_quality: 0.05,
+  trajectory: 0.10,
+  impact_quality: 0.09,
+  inferred_intent: 0.05,
+  overall_fit: 0.03,
+};
+
+const getMappedWeight = (key, val) => {
+  const percent = val / 100;
+  switch (key) {
+    case 'work_experience': return 0.02 + (percent * 0.48);
+    case 'projects':        return 0.02 + (percent * 0.48);
+    case 'skills':          return 0.02 + (percent * 0.38);
+    case 'education':       return 0.01 + (percent * 0.24);
+    case 'certifications':  return 0.01 + (percent * 0.19);
+    default:                return DEFAULT_WEIGHTS[key] || 0.05;
+  }
+};
+
+const calculateDynamicScore = (candidate, slidersState) => {
+  if (!candidate || candidate.status !== 'done') return 0;
+  const sections = candidate.resume_sections || candidate.sections || [];
+  if (!sections.length) return candidate.overall_score || 0;
+  
+  let totalWeightedScore = 0;
+  let totalWeight = 0;
+
+  sections.forEach(sec => {
+    const key = sec.section_key;
+    const score = sec.score || 0;
+    const weight = slidersState[key] !== undefined 
+      ? getMappedWeight(key, slidersState[key])
+      : (DEFAULT_WEIGHTS[key] || 0.05);
+
+    totalWeightedScore += score * weight;
+    totalWeight += weight;
+  });
+
+  return totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 0;
+};
+
 const App = () => {
   // Auth state
   const [session, setSession] = useState(undefined); // undefined = loading, null = guest/logged-out, object = authenticated
   const [userMeta, setUserMeta] = useState(null);    // { role, display_name, email }
+
+  // Weight sliders state
+  const [sliders, setSliders] = useState({
+    work_experience: 50,
+    projects: 50,
+    skills: 50,
+    education: 50,
+    certifications: 50,
+  });
 
   // App navigation state
   const [jobs, setJobs] = useState([]);
@@ -28,6 +84,19 @@ const App = () => {
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [candidateApps, setCandidateApps] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Toast state
+  const [toast, setToast] = useState(null); // { message, type } ('success' | 'error' | 'info')
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // ----- Auth bootstrap -----
   useEffect(() => {
@@ -105,6 +174,18 @@ const App = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, userMeta?.role]);
 
+  // Log analysis failures to browser console for debugging
+  useEffect(() => {
+    candidates.forEach((c) => {
+      if (c.status === 'failed' && c.overall_summary) {
+        console.error(
+          `[ResumeX Error] Analysis failed for candidate "${c.candidate_name}" (${c.candidate_email}). Reason:`,
+          c.overall_summary
+        );
+      }
+    });
+  }, [candidates]);
+
   // ----- Candidate auto-polling -----
   useEffect(() => {
     const hasAnalyzing = candidates.some(c => c.status === 'analyzing');
@@ -140,9 +221,10 @@ const App = () => {
       const payload = { ...jobData, application_deadline: jobData.application_deadline || null };
       await axios.post(`${API_BASE_URL}/jobs/`, payload, { headers: authHeaders(session) });
       fetchJobs();
+      showToast('Job listing created successfully!', 'success');
     } catch (error) {
       console.error('Error creating job:', error);
-      alert('Failed to create job listing. Please check input values.');
+      showToast('Failed to create job listing. Please check inputs.', 'error');
     }
   };
 
@@ -150,21 +232,86 @@ const App = () => {
     try {
       await axios.delete(`${API_BASE_URL}/jobs/${jobId}`, { headers: authHeaders(session) });
       fetchJobs();
-      alert('Job listing deleted successfully.');
+      showToast('Job listing deleted successfully.', 'info');
     } catch (error) {
       console.error('Error deleting job:', error);
-      alert('Failed to delete job listing. Please try again.');
+      showToast('Failed to delete job listing.', 'error');
+    }
+  };
+
+  const handleUpdateJob = async (jobId, updatedFields) => {
+    try {
+      const existingJob = jobs.find((j) => j.id === jobId);
+      if (!existingJob) return;
+
+      const payload = {
+        title: existingJob.title,
+        description: existingJob.description,
+        requirements: existingJob.requirements,
+        location: existingJob.location,
+        employment_type: existingJob.employment_type,
+        department: existingJob.department,
+        application_deadline: existingJob.application_deadline,
+        default_shortlist_message: existingJob.default_shortlist_message,
+        default_rejection_message: existingJob.default_rejection_message,
+        ...updatedFields,
+      };
+
+      const response = await axios.put(`${API_BASE_URL}/jobs/${jobId}`, payload, {
+        headers: authHeaders(session),
+      });
+
+      // Update local state
+      setJobs((prevJobs) =>
+        prevJobs.map((j) => (j.id === jobId ? { ...j, ...response.data } : j))
+      );
+      if (selectedJob && selectedJob.id === jobId) {
+        setSelectedJob((prev) => ({ ...prev, ...response.data }));
+      }
+      showToast('Default templates updated successfully!', 'success');
+    } catch (error) {
+      console.error('Error updating job:', error);
+      showToast('Failed to update templates.', 'error');
+    }
+  };
+
+  const handleRetryAnalysis = async (candidateId) => {
+    try {
+      await axios.post(`${API_BASE_URL}/resumes/${candidateId}/retry`, {}, {
+        headers: authHeaders(session),
+      });
+      showToast('Resume analysis retry scheduled!', 'success');
+      if (selectedJob) {
+        fetchCandidates(selectedJob.id, false);
+      }
+    } catch (error) {
+      console.error('Error retrying resume analysis:', error);
+      showToast('Failed to schedule analysis retry.', 'error');
     }
   };
 
   const handleSelectJob = (job) => {
     setSelectedJob(job);
+    setSliders({
+      work_experience: 50,
+      projects: 50,
+      skills: 50,
+      education: 50,
+      certifications: 50,
+    });
     fetchCandidates(job.id);
   };
 
   const handleBackToDashboard = () => {
     setSelectedJob(null);
     setCandidates([]);
+    setSliders({
+      work_experience: 50,
+      projects: 50,
+      skills: 50,
+      education: 50,
+      certifications: 50,
+    });
     fetchJobs(false);
   };
 
@@ -193,8 +340,10 @@ const App = () => {
       );
       if (selectedJob) fetchCandidates(selectedJob.id);
       fetchJobs();
+      showToast(`${resumeIds.length > 1 ? 'Candidates' : 'Candidate'} shortlisted successfully!`, 'success');
     } catch (error) {
       console.error('Error during bulk shortlist:', error);
+      showToast('Failed to shortlist candidates.', 'error');
     }
   };
 
@@ -207,8 +356,10 @@ const App = () => {
       );
       if (selectedJob) fetchCandidates(selectedJob.id);
       fetchJobs();
+      showToast(`${resumeIds.length > 1 ? 'Candidates' : 'Candidate'} rejected successfully!`, 'info');
     } catch (error) {
       console.error('Error during bulk reject:', error);
+      showToast('Failed to reject candidates.', 'error');
     }
   };
 
@@ -236,7 +387,7 @@ const App = () => {
         headers: authHeaders(session),
       });
       setSelectedCandidate(detailRes.data);
-      alert('Message sent successfully!');
+      showToast('Message sent successfully!', 'success');
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -332,10 +483,15 @@ const App = () => {
         {isCompany ? (
           selectedCandidate ? (
             <ResumeAnalysis
-              candidate={selectedCandidate}
+              candidate={selectedCandidate ? {
+                ...selectedCandidate,
+                overall_score: calculateDynamicScore(selectedCandidate, sliders)
+              } : null}
               onBack={handleBackToJobDetails}
               onUpdateStatus={handleUpdateStatus}
               onSendMessage={handleSendMessage}
+              defaultShortlistMessage={selectedJob?.default_shortlist_message}
+              defaultRejectionMessage={selectedJob?.default_rejection_message}
             />
           ) : selectedJob ? (
             <JobDetails
@@ -346,6 +502,11 @@ const App = () => {
               onBulkShortlist={handleBulkShortlist}
               onBulkReject={handleBulkReject}
               onDeleteJob={handleDeleteJob}
+              onUpdateJob={handleUpdateJob}
+              onRetryAnalysis={handleRetryAnalysis}
+              sliders={sliders}
+              setSliders={setSliders}
+              calculateDynamicScore={calculateDynamicScore}
             />
           ) : (
             <EmployerDashboard
@@ -367,6 +528,21 @@ const App = () => {
           />
         )}
       </main>
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[9999] animate-slide-in select-none">
+          <div className={`glass-panel px-5 py-3.5 rounded-xl border flex items-center gap-3 shadow-2xl backdrop-blur-md ${
+            toast.type === 'error' 
+              ? 'border-rose-500/25 bg-rose-500/10 text-rose-300 shadow-rose-500/5' 
+              : toast.type === 'info' 
+              ? 'border-indigo-500/25 bg-indigo-500/10 text-indigo-300 shadow-indigo-500/5'
+              : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 shadow-emerald-500/5'
+          }`}>
+            <span className="h-2 w-2 rounded-full animate-pulse bg-current" />
+            <span className="text-xs font-semibold">{toast.message}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

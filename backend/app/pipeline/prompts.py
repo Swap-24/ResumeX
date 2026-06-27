@@ -1,6 +1,8 @@
 EVALUATOR_PROMPT = """
 You are an expert technical recruiter evaluating the concrete, visible parts of a resume against a job description.
 
+CURRENT DATE: {current_date}
+
 JOB TITLE AND DESCRIPTION:
 {job_description}
 
@@ -45,6 +47,8 @@ You are an advanced AI hiring intelligence engine. Your job is NOT to look at su
 qualifications. Your job is to read between the lines of a resume and detect the hidden signals 
 that traditional recruiters and keyword filters miss entirely — genuine potential, career 
 direction, and the true substance behind the words.
+
+CURRENT DATE: {current_date}
 
 JOB TITLE AND DESCRIPTION:
 {job_description}

@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Award, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import CandidateProfileCard from './ResumeAnalysis/CandidateProfileCard';
 import DecisionForm from './ResumeAnalysis/DecisionForm';
 import AnalysisSectionCard from './ResumeAnalysis/AnalysisSectionCard';
 
-const ResumeAnalysis = ({ candidate, onBack, onUpdateStatus, onSendMessage }) => {
+const ResumeAnalysis = ({
+  candidate,
+  onBack,
+  onUpdateStatus,
+  onSendMessage,
+  defaultShortlistMessage,
+  defaultRejectionMessage,
+}) => {
   const [activeTab, setActiveTab] = useState('evaluator'); // 'evaluator' | 'profiler'
   const [expandedSection, setExpandedSection] = useState(null);
 
@@ -52,7 +60,12 @@ const ResumeAnalysis = ({ candidate, onBack, onUpdateStatus, onSendMessage }) =>
         {/* Left Column: Candidate Overview & Actions */}
         <div className="space-y-6">
           <CandidateProfileCard candidate={candidate} scoreInfo={scoreInfo} />
-          <DecisionForm onSubmitAction={handleAction} onSendOnlyMessage={handleSendOnlyMessage} />
+          <DecisionForm
+            onSubmitAction={handleAction}
+            onSendOnlyMessage={handleSendOnlyMessage}
+            defaultShortlistMessage={defaultShortlistMessage}
+            defaultRejectionMessage={defaultRejectionMessage}
+          />
         </div>
 
         {/* Right Column: AI Analysis breakdown */}
@@ -90,17 +103,27 @@ const ResumeAnalysis = ({ candidate, onBack, onUpdateStatus, onSendMessage }) =>
           </div>
 
           {/* Analysis Cards list */}
-          <div className="space-y-4">
-            {currentTabSections.map((section) => (
-              <AnalysisSectionCard
-                key={section.section_key}
-                section={section}
-                isExpanded={expandedSection === section.section_key}
-                onToggleExpand={() => setExpandedSection(expandedSection === section.section_key ? null : section.section_key)}
-                getScoreLabel={getScoreLabel}
-              />
-            ))}
-          </div>
+          <motion.div className="space-y-4" layout>
+            <AnimatePresence mode="popLayout">
+              {currentTabSections.map((section) => (
+                <motion.div
+                  key={section.section_key}
+                  layout
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -15 }}
+                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                >
+                  <AnalysisSectionCard
+                    section={section}
+                    isExpanded={expandedSection === section.section_key}
+                    onToggleExpand={() => setExpandedSection(expandedSection === section.section_key ? null : section.section_key)}
+                    getScoreLabel={getScoreLabel}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         </div>
       </div>
     </div>

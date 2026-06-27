@@ -67,8 +67,16 @@ def _call_gemini(prompt: str, max_retries: int = 3) -> list[dict]:
             last_error = e
             error_str = str(e)
 
-            # only retry on transient errors, not on bad JSON or bad input
-            if "503" in error_str or "UNAVAILABLE" in error_str or "429" in error_str:
+            from google.genai.errors import APIError
+            import httpx
+
+            is_transient = (
+                (isinstance(e, APIError) and e.code in (429, 500, 502, 503, 504)) or
+                isinstance(e, (httpx.HTTPError, httpx.RequestError)) or
+                any(keyword in error_str for keyword in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "exhausted", "limit"])
+            )
+
+            if is_transient:
                 wait_time = 2 ** attempt  # 1s, 2s, 4s
                 time.sleep(wait_time)
                 continue
@@ -86,7 +94,9 @@ def run_evaluator(state: ResumeState) -> dict:
         return {}
 
     try:
+        current_date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
         prompt = EVALUATOR_PROMPT.format(
+            current_date=current_date_str,
             job_description=state["job_description"],
             job_requirements=state["job_requirements"],
             resume_text=state["raw_text"]
@@ -107,7 +117,9 @@ def run_profiler(state: ResumeState) -> dict:
         return {}
 
     try:
+        current_date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
         prompt = PROFILER_PROMPT.format(
+            current_date=current_date_str,
             job_description=state["job_description"],
             job_requirements=state["job_requirements"],
             resume_text=state["raw_text"]
@@ -152,7 +164,8 @@ def combine_sections(state: ResumeState) -> dict:
 def save_analysis(state: ResumeState) -> dict:
     if state.get("error"):
         supabase.table("resumes").update({
-            "status": "failed"
+            "status": "failed",
+            "overall_summary": f"Pipeline Error: {state.get('error')}"
         }).eq("id", state["resume_id"]).execute()
         return {}
 

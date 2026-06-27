@@ -12,6 +12,8 @@ class JobCreate(BaseModel):
     application_deadline: Optional[datetime] = None
     employment_type: Optional[str] = None
     department: Optional[str] = None
+    default_shortlist_message: Optional[str] = None
+    default_rejection_message: Optional[str] = None
 
 class JobResponse(BaseModel):
     id: str
@@ -28,6 +30,8 @@ class JobResponse(BaseModel):
     average_score: Optional[float] = 0.0
     company_name: Optional[str] = None
     company_id: Optional[str] = None
+    default_shortlist_message: Optional[str] = None
+    default_rejection_message: Optional[str] = None
 
 #Resume Schemas
 
