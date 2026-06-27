@@ -110,7 +110,7 @@ const AnalysisSectionCard = ({ section, isExpanded, onToggleExpand, getScoreLabe
                   Positives
                 </span>
                 {section.positives?.length > 0 ? (
-                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
+                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1 break-words">
                     {section.positives.map((item, i) => (
                       <li key={i}>{item}</li>
                     ))}
@@ -127,7 +127,7 @@ const AnalysisSectionCard = ({ section, isExpanded, onToggleExpand, getScoreLabe
                   Negatives / Flags
                 </span>
                 {section.negatives?.length > 0 ? (
-                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
+                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1 break-words">
                     {section.negatives.map((item, i) => (
                       <li key={i}>{item}</li>
                     ))}
@@ -144,7 +144,7 @@ const AnalysisSectionCard = ({ section, isExpanded, onToggleExpand, getScoreLabe
                   Missing Items
                 </span>
                 {section.missing?.length > 0 ? (
-                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1">
+                  <ul className="space-y-1.5 list-disc list-inside text-gray-300 pl-1 break-words">
                     {section.missing.map((item, i) => (
                       <li key={i}>{item}</li>
                     ))}

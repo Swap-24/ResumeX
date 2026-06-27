@@ -20,6 +20,7 @@ const JobDetails = ({
   setSliders,
   calculateDynamicScore,
 }) => {
+  const [activeTab, setActiveTab] = useState('pending');
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkMessage, setBulkMessage] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -27,13 +28,13 @@ const JobDetails = ({
   const [scoreThreshold, setScoreThreshold] = useState('');
   const [rankThreshold, setRankThreshold] = useState('');
 
-  // Reset selected IDs when job changes
+  // Reset selected IDs when job or tab changes
   useEffect(() => {
     setSelectedIds([]);
     setBulkMessage('');
     setScoreThreshold('');
     setRankThreshold('');
-  }, [job]);
+  }, [job, activeTab]);
 
   const handleSelectToggle = (id) => {
     setSelectedIds((prev) =>
@@ -56,6 +57,28 @@ const JobDetails = ({
     return b.overall_score - a.overall_score;
   });
 
+  // Compute counts for tabs
+  const pendingCount = sortedCandidates.filter(
+    (c) => c.application_status !== 'shortlisted' && c.application_status !== 'rejected'
+  ).length;
+  const shortlistedCount = sortedCandidates.filter(
+    (c) => c.application_status === 'shortlisted'
+  ).length;
+  const rejectedCount = sortedCandidates.filter(
+    (c) => c.application_status === 'rejected'
+  ).length;
+
+  // Filter candidates based on active tab
+  const tabCandidates = sortedCandidates.filter((c) => {
+    if (activeTab === 'shortlisted') {
+      return c.application_status === 'shortlisted';
+    } else if (activeTab === 'rejected') {
+      return c.application_status === 'rejected';
+    } else {
+      return c.application_status !== 'shortlisted' && c.application_status !== 'rejected';
+    }
+  });
+
   // Compute dynamic Average Match score
   const activeScores = dynamicCandidates
     .filter((c) => c.status === 'done')
@@ -73,8 +96,8 @@ const JobDetails = ({
     }
     const num = parseInt(val, 10);
     if (isNaN(num)) return;
-    const matching = sortedCandidates
-      .filter((c) => c.status === 'done' && c.application_status !== 'shortlisted' && c.overall_score >= num)
+    const matching = tabCandidates
+      .filter((c) => c.status === 'done' && c.overall_score >= num)
       .map((c) => c.id);
     setSelectedIds(matching);
   };
@@ -88,8 +111,8 @@ const JobDetails = ({
     }
     const num = parseInt(val, 10);
     if (isNaN(num)) return;
-    const matching = sortedCandidates
-      .filter((c) => c.status === 'done' && c.application_status !== 'shortlisted')
+    const matching = tabCandidates
+      .filter((c) => c.status === 'done')
       .slice(0, num)
       .map((c) => c.id);
     setSelectedIds(matching);
@@ -97,8 +120,8 @@ const JobDetails = ({
 
   const handleSelectAll = () => {
     setSelectedIds(
-      sortedCandidates
-        .filter((c) => c.status === 'done' && c.application_status !== 'shortlisted')
+      tabCandidates
+        .filter((c) => c.status === 'done')
         .map((c) => c.id)
     );
   };
@@ -148,7 +171,7 @@ const JobDetails = ({
         'Impact Quality Score', 'Inferred Intent Score',
       ];
 
-      const rows = sortedCandidates.map((c, idx) => [
+      const rows = tabCandidates.map((c, idx) => [
         idx + 1,
         c.candidate_name,
         c.candidate_email,
@@ -171,10 +194,11 @@ const JobDetails = ({
         .join('\n');
 
       const safeName = (job.title || 'job').replace(/[^a-zA-Z0-9\s_-]/g, '').trim().replace(/\s+/g, '_');
+      const suggestedFileName = `${safeName}_${activeTab}_candidates.csv`;
 
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
-          suggestedName: `${safeName}_candidate_rankings.csv`,
+          suggestedName: suggestedFileName,
           types: [{ description: 'CSV Files', accept: { 'text/csv': ['.csv'] } }],
         });
         const writable = await handle.createWritable();
@@ -294,7 +318,7 @@ const JobDetails = ({
                   <input
                     type="number"
                     min="1"
-                    max={candidates.length}
+                    max={tabCandidates.length}
                     value={rankThreshold}
                     onChange={(e) => handleRankThresholdChange(e.target.value)}
                     className="bg-transparent text-white w-9 focus:outline-none text-center font-semibold text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -323,7 +347,7 @@ const JobDetails = ({
                     Deselect
                   </button>
                 )}
-                {candidates.some(c => c.application_status !== 'shortlisted' && c.application_status !== 'rejected') && (
+                {activeTab === 'pending' && pendingCount > 0 && (
                   <button
                     onClick={() => setShowRejectRemainingModal(true)}
                     className="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-2.5 py-1.5 rounded-lg border border-rose-500/20 cursor-pointer font-semibold transition-all animate-fade-in"
@@ -334,7 +358,7 @@ const JobDetails = ({
               </div>
             )}
           </div>
-
+ 
           {candidates.length === 0 ? (
             <div className="glass-panel rounded-2xl p-12 text-center text-gray-400 border-dashed border-2 border-white/5">
               <FileText className="h-12 w-12 mx-auto text-gray-500 mb-4 stroke-1" />
@@ -342,36 +366,118 @@ const JobDetails = ({
               <p className="text-sm mt-1">Candidates applying on the Job Seeker portal will automatically appear here ranked in real-time.</p>
             </div>
           ) : (
-            <motion.div className="space-y-3" layout>
-              <AnimatePresence mode="popLayout">
-                {sortedCandidates.map((candidate, idx) => (
-                  <motion.div
-                    key={candidate.id}
-                    layout
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 400,
-                      damping: 38,
-                      mass: 0.8
-                    }}
-                  >
-                    <CandidateRow
-                      candidate={candidate}
-                      index={idx}
-                      isSelected={selectedIds.includes(candidate.id)}
-                      onSelectToggle={() => handleSelectToggle(candidate.id)}
-                      onSelectCandidate={onSelectCandidate}
-                      onRetryAnalysis={onRetryAnalysis}
-                      getBadgeStyle={getBadgeStyle}
-                      getAppStatusStyle={getAppStatusStyle}
+            <>
+              {/* Tabs Navigation */}
+              <div className="flex border-b border-white/10 gap-2 mb-6">
+                <button
+                  onClick={() => setActiveTab('pending')}
+                  className={`pb-3 px-4 text-sm font-semibold transition-all relative cursor-pointer flex items-center ${
+                    activeTab === 'pending'
+                      ? 'text-brand-400 font-bold'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  Pending
+                  <span className={`ml-2 px-2 py-0.5 text-[10px] rounded-full font-bold ${activeTab === 'pending' ? 'bg-brand-500/20 text-brand-300' : 'bg-white/5 text-gray-400'}`}>
+                    {pendingCount}
+                  </span>
+                  {activeTab === 'pending' && (
+                    <motion.div
+                      layoutId="activeTabUnderline"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500"
                     />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </motion.div>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('shortlisted')}
+                  className={`pb-3 px-4 text-sm font-semibold transition-all relative cursor-pointer flex items-center ${
+                    activeTab === 'shortlisted'
+                      ? 'text-brand-400 font-bold'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  Shortlisted
+                  <span className={`ml-2 px-2 py-0.5 text-[10px] rounded-full font-bold ${activeTab === 'shortlisted' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-gray-400'}`}>
+                    {shortlistedCount}
+                  </span>
+                  {activeTab === 'shortlisted' && (
+                    <motion.div
+                      layoutId="activeTabUnderline"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500"
+                    />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('rejected')}
+                  className={`pb-3 px-4 text-sm font-semibold transition-all relative cursor-pointer flex items-center ${
+                    activeTab === 'rejected'
+                      ? 'text-brand-400 font-bold'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  Rejected
+                  <span className={`ml-2 px-2 py-0.5 text-[10px] rounded-full font-bold ${activeTab === 'rejected' ? 'bg-rose-500/20 text-rose-300' : 'bg-white/5 text-gray-400'}`}>
+                    {rejectedCount}
+                  </span>
+                  {activeTab === 'rejected' && (
+                    <motion.div
+                      layoutId="activeTabUnderline"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500"
+                    />
+                  )}
+                </button>
+              </div>
+
+              {tabCandidates.length === 0 ? (
+                <div className="glass-panel rounded-2xl p-12 text-center text-gray-400 border-dashed border-2 border-white/5 animate-fade-in">
+                  <FileText className="h-12 w-12 mx-auto text-gray-500 mb-4 stroke-1" />
+                  <p className="text-base font-semibold">
+                    {activeTab === 'pending' && "All caught up!"}
+                    {activeTab === 'shortlisted' && "No shortlisted candidates yet"}
+                    {activeTab === 'rejected' && "No rejected candidates yet"}
+                  </p>
+                  <p className="text-sm mt-1">
+                    {activeTab === 'pending' && "All applicants for this job have been shortlisted or rejected."}
+                    {activeTab === 'shortlisted' && "Shortlist candidates from the Pending tab to see them here."}
+                    {activeTab === 'rejected' && "Rejected candidates will appear in this tab."}
+                  </p>
+                </div>
+              ) : (
+                <motion.div className="space-y-3" layout>
+                  <AnimatePresence mode="popLayout">
+                    {tabCandidates.map((candidate) => {
+                      const overallIdx = sortedCandidates.findIndex(c => c.id === candidate.id);
+                      return (
+                        <motion.div
+                          key={candidate.id}
+                          layout
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 400,
+                            damping: 38,
+                            mass: 0.8
+                          }}
+                        >
+                          <CandidateRow
+                            candidate={candidate}
+                            index={overallIdx}
+                            isSelected={selectedIds.includes(candidate.id)}
+                            onSelectToggle={() => handleSelectToggle(candidate.id)}
+                            onSelectCandidate={onSelectCandidate}
+                            onRetryAnalysis={onRetryAnalysis}
+                            getBadgeStyle={getBadgeStyle}
+                            getAppStatusStyle={getAppStatusStyle}
+                          />
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+            </>
           )}
         </div>
       </div>

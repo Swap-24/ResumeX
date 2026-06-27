@@ -3,6 +3,8 @@ import os
 import json
 import datetime
 import uuid
+import csv
+from typing import cast, Any, List, Dict
 
 sys.path.insert(0, r"c:\Users\KIIT0001\Documents\ResumeX\backend")
 from dotenv import load_dotenv
@@ -15,7 +17,7 @@ COMPANY_ID = "24e49535-22bb-446c-8411-de4197189746" # Oscorp
 CANDIDATES_JSONL_PATH = r"C:\Users\KIIT0001\Downloads\[PUB] India_runs_data_and_ai_challenge\[PUB] India_runs_data_and_ai_challenge\India_runs_data_and_ai_challenge\candidates.jsonl"
 SUBMISSION_CSV_PATH = r"C:\Users\KIIT0001\Downloads\[PUB] India_runs_data_and_ai_challenge\[PUB] India_runs_data_and_ai_challenge\India_runs_data_and_ai_challenge\team_submission.csv"
 
-def create_job():
+def create_job() -> str:
     print("Creating Job...")
     desc = """We're building a new AI Engineering org from scratch. We need someone who is simultaneously comfortable with deep technical depth in modern ML systems (embeddings, retrieval, ranking, LLMs, fine-tuning) and a scrappy product-engineering attitude (willing to ship a working ranker in a week). You will own the intelligence layer of Redrob's product: the ranking, retrieval, and matching systems that decide what recruiters see."""
     reqs = """- Production experience with embeddings-based retrieval systems (sentence-transformers, BGE, E5, etc.)
@@ -41,9 +43,11 @@ def create_job():
     if not job_res.data:
         raise Exception("Failed to create job")
     
-    job = job_res.data[0]
-    print(f"Created Job ID: {job['id']}")
-    return job['id']
+    job_res_data = cast(List[Dict[str, Any]], job_res.data)
+    job = job_res_data[0]
+    job_id = cast(str, job['id'])
+    print(f"Created Job ID: {job_id}")
+    return job_id
 
 def load_top_candidates_data(limit=30):
     print(f"Loading top {limit} candidates from submission CSV and JSONL...")
@@ -82,21 +86,21 @@ def parse_date(date_str):
     except:
         return None
 
-def import_candidates(job_id):
+def import_candidates(job_id: str):
     candidates = load_top_candidates_data(30)
     print(f"Importing {len(candidates)} candidates into database...")
     
     for c in candidates:
-        cid = c["candidate_id"]
-        profile = c["profile"]
-        skills = c["skills"]
-        career = c["career_history"]
-        signals = c["redrob_signals"]
-        sub_data = c["submission_data"]
+        cid = str(c["candidate_id"])
+        profile = cast(Dict[str, Any], c["profile"])
+        skills = cast(List[Dict[str, Any]], c["skills"])
+        career = cast(List[Dict[str, Any]], c["career_history"])
+        signals = cast(Dict[str, Any], c["redrob_signals"])
+        sub_data = cast(Dict[str, Any], c["submission_data"])
         
-        name = profile["anonymized_name"]
+        name = str(profile["anonymized_name"])
         email = f"{cid.lower()}@redrob-candidate.com"
-        overall_score = int(sub_data["score"] * 100)
+        overall_score = int(float(sub_data.get("score", 0)) * 100)
         
         # Build raw text representation of resume
         lines = []
@@ -125,7 +129,7 @@ def import_candidates(job_id):
             "raw_text": raw_text,
             "status": "done",
             "overall_score": overall_score,
-            "overall_summary": sub_data["reasoning"],
+            "overall_summary": sub_data.get("reasoning", ""),
             "application_status": "under_review",
         }).execute()
         
@@ -133,24 +137,25 @@ def import_candidates(job_id):
             print(f"Failed to insert candidate {name}")
             continue
             
-        resume_db_id = res_res.data[0]["id"]
+        res_res_data = cast(List[Dict[str, Any]], res_res.data)
+        resume_db_id = res_res_data[0]["id"]
         
         # Create resume sections
         # We'll populate sections using realistic sub-scores based on their data
-        yoe = profile.get("years_of_experience", 0)
+        yoe = float(profile.get("years_of_experience", 0) or 0)
         work_score = 95 if 5 <= yoe <= 10 else (80 if 4 <= yoe <= 12 else 50)
         
-        ai_skills = [s for s in skills if s.get("name").lower() in ["nlp", "embeddings", "vector search", "pinecone", "weaviate", "milvus", "rag", "retrieval", "llm", "fine-tuning"]]
+        ai_skills = [s for s in skills if str(s.get("name", "")).lower() in ["nlp", "embeddings", "vector search", "pinecone", "weaviate", "milvus", "rag", "retrieval", "llm", "fine-tuning"]]
         skills_score = min(len(ai_skills) * 15 + 40, 100)
         
-        github = signals.get("github_activity_score", 0)
-        github_val = max(0, github)
+        github = float(signals.get("github_activity_score", 0) or 0)
+        github_val = max(0.0, github)
         
         sections = [
-            ("work_experience", "Work Experience", work_score, f"Has {yoe} years of experience in the industry, matching founding team requirements.", ["Strong background in backend/ML", "Consistent company tenures"], ["Not located in Pune/Noida offices" if not any(c in profile.get('location','').lower() for c in ['pune', 'noida']) else "Located close to offices"], []),
-            ("skills", "Skills & Proficiencies", skills_score, f"Possesses key matching skills in {', '.join([s.get('name') for s in ai_skills[:3]]) or 'applied engineering'}.", [f"Expertise in {s.get('name')}" for s in ai_skills[:2]], [], [s for s in ["Pinecone", "Weaviate", "Milvus", "elasticsearch"] if s.lower() not in [sk.get('name').lower() for sk in skills]]),
+            ("work_experience", "Work Experience", work_score, f"Has {yoe} years of experience in the industry, matching founding team requirements.", ["Strong background in backend/ML", "Consistent company tenures"], ["Not located in Pune/Noida offices" if not any(c_city in str(profile.get('location','')).lower() for c_city in ['pune', 'noida']) else "Located close to offices"], []),
+            ("skills", "Skills & Proficiencies", skills_score, f"Possesses key matching skills in {', '.join([str(s.get('name', '')) for s in ai_skills[:3]]) or 'applied engineering'}.", [f"Expertise in {str(s.get('name', ''))}" for s in ai_skills[:2]], [], [s_missing for s_missing in ["Pinecone", "Weaviate", "Milvus", "elasticsearch"] if s_missing.lower() not in [str(sk.get('name', '')).lower() for sk in skills]]),
             ("projects", "Projects", 85, "Demonstrates outcomes-driven technical projects in candidate descriptions.", ["Factual outcomes stated in history", "Production-scale deployment mentioned"], [], []),
-            ("education", "Education", 90 if any(e.get("tier") == "tier_1" for e in c.get("education", [])) else 75, "Educational credentials checked.", ["Degree in Computer Science or relevant field"], [], []),
+            ("education", "Education", 90 if any(str(e.get("tier", "")).lower() == "tier_1" for e in cast(List[Dict[str, Any]], c.get("education", []))) else 75, "Educational credentials checked.", ["Degree in Computer Science or relevant field"], [], []),
             ("certifications", "Certifications", 80, "Holds professional certifications.", ["Verified certification records"], [], []),
             ("resume_quality", "Resume Quality", 90, "Well-formatted structured profile.", ["Highly readable sections", "No spelling/formatting issues"], [], []),
             ("trajectory", "Career Trajectory", 85, "Displays consistent upward mobility and responsibilities.", ["Growth in titles and scope", "Active technical ownership"], [], []),
@@ -181,7 +186,6 @@ def import_candidates(job_id):
             
     print("Import finished successfully!")
 
-import csv
 if __name__ == "__main__":
     job_id = create_job()
     import_candidates(job_id)
