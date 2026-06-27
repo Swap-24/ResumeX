@@ -129,31 +129,59 @@ const JobDetails = ({
     }
 
     try {
-      // Build query string from slider values + job_id
-      const params = new URLSearchParams();
-      params.append('job_id', job.id);
-      Object.entries(sliders).forEach(([key, value]) => {
-        params.append(key, value.toString());
-      });
+      const getSectionScore = (candidate, key) => {
+        const sections = candidate.resume_sections || candidate.sections || [];
+        const sec = sections.find(s => s.section_key === key);
+        return sec ? sec.score : 'N/A';
+      };
 
-      const url = `http://localhost:8000/export/candidate_rankings.csv?${params.toString()}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Export failed: ${response.status}`);
-      const csvText = await response.text();
+      const toCSVCell = (val) => {
+        const str = String(val ?? '');
+        return str.includes(',') || str.includes('"') || str.includes('\n')
+          ? `"${str.replace(/"/g, '""')}"` : str;
+      };
 
-      // Try native file save dialog (File System Access API — works in Electron/Chromium)
+      const headers = [
+        'Rank', 'Candidate Name', 'Email', 'Overall Match Score (%)', 'Status',
+        'Work Experience Score', 'Projects Score', 'Skills Score', 'Education Score',
+        'Certifications Score', 'Resume Quality Score', 'Trajectory Score',
+        'Impact Quality Score', 'Inferred Intent Score',
+      ];
+
+      const rows = sortedCandidates.map((c, idx) => [
+        idx + 1,
+        c.candidate_name,
+        c.candidate_email,
+        c.status === 'done' ? `${c.overall_score}%` : 'Pending',
+        c.application_status === 'under_review' ? 'Applied' : (c.application_status || ''),
+        getSectionScore(c, 'work_experience'),
+        getSectionScore(c, 'projects'),
+        getSectionScore(c, 'skills'),
+        getSectionScore(c, 'education'),
+        getSectionScore(c, 'certifications'),
+        getSectionScore(c, 'resume_quality'),
+        getSectionScore(c, 'trajectory'),
+        getSectionScore(c, 'impact_quality'),
+        getSectionScore(c, 'inferred_intent'),
+      ]);
+
+      // UTF-8 BOM so Excel reads it correctly
+      const csvContent = '\ufeff' + [headers, ...rows]
+        .map(row => row.map(toCSVCell).join(','))
+        .join('\n');
+
+      const safeName = (job.title || 'job').replace(/[^a-zA-Z0-9\s_-]/g, '').trim().replace(/\s+/g, '_');
+
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
-          suggestedName: 'candidate_rankings.csv',
+          suggestedName: `${safeName}_candidate_rankings.csv`,
           types: [{ description: 'CSV Files', accept: { 'text/csv': ['.csv'] } }],
         });
         const writable = await handle.createWritable();
-        await writable.write(csvText);
+        await writable.write(csvContent);
         await writable.close();
-        console.log('[ResumeX] CSV saved via file picker.');
       } else {
-        // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(csvText);
+        await navigator.clipboard.writeText(csvContent);
         alert('CSV copied to clipboard! Paste into a .csv file to save.');
       }
     } catch (err) {
