@@ -5,4 +5,7 @@ supabase
 pydantic
 python-dotenv
 pdfplumber
-python-jose[cryptography]
+python-jose[cryptography]
+sentence-transformers
+numpy
+

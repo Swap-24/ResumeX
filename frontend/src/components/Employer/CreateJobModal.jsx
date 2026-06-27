@@ -1,7 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { X, Calendar } from 'lucide-react';
+import axios from 'axios';
 
-const CreateJobModal = ({ onClose, onSubmit }) => {
+const API_BASE_URL = 'http://localhost:8000';
+
+const authHeaders = (session) =>
+  session?.access_token
+    ? { Authorization: `Bearer ${session.access_token}` }
+    : {};
+
+const CreateJobModal = ({ onClose, onSubmit, session }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -14,7 +22,11 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
     default_rejection_message: '',
   });
 
+  const [isParsing, setIsParsing] = useState(false);
+  const [parsedFile, setParsedFile] = useState(null);
+
   const dateInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
 
   const getTomorrowDateString = () => {
     const tomorrow = new Date();
@@ -25,6 +37,38 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
     return `${yyyy}-${mm}-${dd}`;
   };
   const tomorrowStr = getTomorrowDateString();
+
+  const handlePdfUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsParsing(true);
+    const formDataPayload = new FormData();
+    formDataPayload.append('file', file);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/jobs/parse-jd`, formDataPayload, {
+        headers: {
+          ...authHeaders(session),
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const data = response.data;
+      setFormData(prev => ({
+        ...prev,
+        title: data.title || prev.title,
+        description: data.description || prev.description,
+        requirements: data.requirements || prev.requirements,
+      }));
+      setParsedFile(file);
+    } catch (error) {
+      console.error('Error parsing JD PDF:', error);
+      alert('Failed to parse JD PDF. Please try again or fill fields manually.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -46,6 +90,38 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+          {/* PDF JD Upload Container */}
+          <div className="p-4 bg-brand-500/5 border border-brand-500/10 rounded-2xl space-y-2">
+            <label className="text-xs font-bold text-brand-400 uppercase tracking-wider block">
+              Auto-fill from Job Description PDF (Optional)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept="application/pdf"
+                ref={pdfInputRef}
+                onChange={handlePdfUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => pdfInputRef.current?.click()}
+                disabled={isParsing}
+                className="px-4 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:bg-gray-700 text-white font-semibold rounded-xl text-xs transition-all cursor-pointer shadow-md"
+              >
+                {isParsing ? 'Parsing PDF...' : 'Upload JD PDF'}
+              </button>
+              {parsedFile && (
+                <span className="text-xs text-emerald-400 font-semibold truncate max-w-xs animate-fade-in">
+                  ✓ {parsedFile.name} parsed successfully
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-gray-500">
+              Upload your JD PDF to automatically extract the Job Title, Job Description, and Key Requirements.
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Job Title *</label>
@@ -151,9 +227,11 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Job Description *</label>
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {`Job Description ${!parsedFile ? '*' : ''}`}
+            </label>
             <textarea
-              required
+              required={!parsedFile}
               rows={4}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -163,9 +241,11 @@ const CreateJobModal = ({ onClose, onSubmit }) => {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Key Requirements *</label>
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {`Key Requirements ${!parsedFile ? '*' : ''}`}
+            </label>
             <textarea
-              required
+              required={!parsedFile}
               rows={4}
               value={formData.requirements}
               onChange={(e) => setFormData({ ...formData, requirements: e.target.value })}

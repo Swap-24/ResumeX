@@ -4,7 +4,7 @@ import EmployerStats from './Employer/EmployerStats';
 import JobCard from './Employer/JobCard';
 import CreateJobModal from './Employer/CreateJobModal';
 
-const EmployerDashboard = ({ jobs, onCreateJob, onSelectJob }) => {
+const EmployerDashboard = ({ jobs, onCreateJob, onSelectJob, session }) => {
   const [showModal, setShowModal] = useState(false);
 
   // Compute stats
@@ -72,6 +72,7 @@ const EmployerDashboard = ({ jobs, onCreateJob, onSelectJob }) => {
         <CreateJobModal 
           onClose={() => setShowModal(false)} 
           onSubmit={onCreateJob} 
+          session={session}
         />
       )}
     </div>

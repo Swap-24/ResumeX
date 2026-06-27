@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Response
 from app.database import supabase
 from app.services.pdf_parser import extract_text_from_pdf
-from app.services.local_analyzer import analyze_resume_locally, compute_label
+from app.services.analyzer import analyze_from_text, compute_label
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from typing import Optional, cast, Any
@@ -29,13 +29,13 @@ def run_pipeline(resume_id: str, job_id: str, raw_text: str):
         if not job_response.data:
             raise Exception("Job not found")
 
-        job = job_response.data[0]
+        job = cast(dict[str, Any], job_response.data[0])
         title = job.get("title", "")
         desc = job.get("description", "")
         reqs = job.get("requirements", "")
 
-        # Run local analyzer
-        analysis = analyze_resume_locally(raw_text, title, desc, reqs)
+        # Run semantic analyzer (embeddings + skill graph)
+        analysis = analyze_from_text(raw_text, title, desc, reqs, job_id=job_id)
 
         # Save sections
         section_rows = []

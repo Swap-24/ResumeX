@@ -513,6 +513,7 @@ const App = () => {
               jobs={jobs}
               onCreateJob={handleCreateJob}
               onSelectJob={handleSelectJob}
+              session={session}
             />
           )
         ) : (

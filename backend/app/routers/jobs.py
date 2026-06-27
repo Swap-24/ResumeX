@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+import re
+from app.services.pdf_parser import extract_text_from_pdf
 from app.models.schemas import JobCreate, JobResponse
 from app.database import supabase
 from app.auth import get_current_user, get_optional_user, AuthUser
@@ -153,3 +155,53 @@ def delete_job(job_id: str, user: AuthUser = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     return {"message": "Job deleted successfully"}
+
+
+@router.post("/parse-jd")
+async def parse_jd_pdf(file: UploadFile = File(...), user: AuthUser = Depends(get_current_user)):
+    """Extract title, description, and requirements from a JD PDF file."""
+    if user.role != "company":
+        raise HTTPException(status_code=403, detail="Only company accounts can parse JDs")
+
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    try:
+        file_bytes = await file.read()
+        raw_text = extract_text_from_pdf(file_bytes)
+        if not raw_text.strip():
+            raise Exception("No text found in PDF")
+            
+        lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+        title = lines[0] if lines and len(lines[0]) < 60 else ""
+        
+        headers = [
+            r'\b(?:key\s+)?requirements\b',
+            r'\bqualifications\b',
+            r'\bwhat\s+you\s+(?:need|will\s+need|should\s+have)\b',
+            r'\brequired\s+(?:skills|experience)\b',
+            r'\bwho\s+you\s+are\b',
+            r'\bwhat\s+we\s+look\s+for\b',
+        ]
+        earliest_idx = -1
+        for h in headers:
+            m = re.search(h, raw_text, re.IGNORECASE)
+            if m:
+                if earliest_idx == -1 or m.start() < earliest_idx:
+                    earliest_idx = m.start()
+                    
+        if earliest_idx != -1:
+            desc = raw_text[:earliest_idx].strip()
+            reqs = raw_text[earliest_idx:].strip()
+        else:
+            split_point = int(len(raw_text) * 0.6)
+            desc = raw_text[:split_point].strip()
+            reqs = raw_text[split_point:].strip()
+
+        return {
+            "title": title,
+            "description": desc,
+            "requirements": reqs
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse JD PDF: {str(e)}")

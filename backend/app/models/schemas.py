@@ -6,8 +6,8 @@ from datetime import datetime
 
 class JobCreate(BaseModel):
     title: str
-    description: str
-    requirements: str
+    description: Optional[str] = None
+    requirements: Optional[str] = None
     location: Optional[str] = None
     application_deadline: Optional[datetime] = None
     employment_type: Optional[str] = None
@@ -18,8 +18,8 @@ class JobCreate(BaseModel):
 class JobResponse(BaseModel):
     id: str
     title: str
-    description: str
-    requirements: str
+    description: Optional[str] = None
+    requirements: Optional[str] = None
     location: Optional[str]
     application_deadline: Optional[datetime]
     employment_type: Optional[str]

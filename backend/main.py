@@ -1,8 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import jobs, resumes, auth
+from contextlib import asynccontextmanager
+import asyncio
 
-app = FastAPI(title = "ResumeX", description = "ResumeX is a web app that allows real time ranking of resumes based on job descriptions using AI")  #initialize app
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Pre-load the sentence-transformers model so the first upload isn't slow."""
+    from app.services.embedding_engine import warmup
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, warmup)
+    yield
+    # (nothing to tear down)
+
+app = FastAPI(
+    title="ResumeX",
+    description="ResumeX is a web app that allows real-time ranking of resumes using a hybrid semantic + skill-graph scoring engine.",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
